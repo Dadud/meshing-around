@@ -1017,6 +1017,12 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(404, "Not Found")
                 return
         except Exception as e:
+            # Log the error for debugging
+            import sys
+            import traceback
+            print(f"Web UI: Error handling GET request for {self.path}: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            
             # Ensure we can send error response even if headers were partially sent
             try:
                 # Try to send error response
@@ -1027,10 +1033,9 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 response = {"error": str(e), "type": type(e).__name__}
                 json_response = json.dumps(response, indent=2, default=str)
                 self.wfile.write(json_response.encode('utf-8'))
-            except:
+            except Exception as send_error:
                 # If we can't send error response (headers already sent), try to write to body
-                import sys
-                print(f"Web UI: Critical error handling GET request: {e}", file=sys.stderr)
+                print(f"Web UI: Failed to send error response: {send_error}", file=sys.stderr)
                 try:
                     # Try to write error to response body if headers were already sent
                     response = {"error": str(e), "type": type(e).__name__}
