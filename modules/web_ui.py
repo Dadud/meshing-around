@@ -2369,6 +2369,142 @@ def get_web_ui_html() -> str:
             }
         }
         
+        // Log Viewer Functions
+        let logAutoScroll = true;
+        let logRefreshInterval = null;
+        let currentLogType = 'system';
+        let currentLogLevel = 'all';
+        let currentLogLines = 500;
+        
+        async function loadLogs() {
+            const content = document.getElementById('logs-content');
+            if (!content) return;
+            
+            // Build controls HTML
+            let html = '<div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">';
+            html += '<div class="form-group" style="margin: 0;">';
+            html += '<label for="log-type" style="margin-right: 8px;">Log Type:</label>';
+            html += `<select id="log-type" onchange="currentLogType = this.value; loadLogs();" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db;">`;
+            html += `<option value="system" ${currentLogType === 'system' ? 'selected' : ''}>System Logs</option>`;
+            html += `<option value="messages" ${currentLogType === 'messages' ? 'selected' : ''}>Message Logs</option>`;
+            html += '</select>';
+            html += '</div>';
+            
+            html += '<div class="form-group" style="margin: 0;">';
+            html += '<label for="log-level" style="margin-right: 8px;">Level:</label>';
+            html += `<select id="log-level" onchange="currentLogLevel = this.value; loadLogs();" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db;">`;
+            html += '<option value="all">All Levels</option>';
+            html += '<option value="DEBUG">DEBUG</option>';
+            html += '<option value="INFO">INFO</option>';
+            html += '<option value="WARNING">WARNING</option>';
+            html += '<option value="ERROR">ERROR</option>';
+            html += '<option value="CRITICAL">CRITICAL</option>';
+            html += '</select>';
+            html += '</div>';
+            
+            html += '<div class="form-group" style="margin: 0;">';
+            html += '<label for="log-lines" style="margin-right: 8px;">Lines:</label>';
+            html += `<input type="number" id="log-lines" value="${currentLogLines}" min="50" max="5000" step="50" onchange="currentLogLines = parseInt(this.value) || 500; loadLogs();" style="width: 100px; padding: 6px; border-radius: 6px; border: 1px solid #d1d5db;">`;
+            html += '</div>';
+            
+            html += '<div class="form-group" style="margin: 0;">';
+            html += `<label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="log-autoscroll" ${logAutoScroll ? 'checked' : ''} onchange="logAutoScroll = this.checked;" style="margin-right: 6px;">Auto-scroll</label>`;
+            html += '</div>';
+            
+            html += '<button class="btn" onclick="loadLogs()" style="padding: 6px 12px;">🔄 Refresh</button>';
+            html += '<button class="btn" onclick="clearLogs()" style="padding: 6px 12px;">🗑️ Clear</button>';
+            html += '</div>';
+            
+            html += '<div id="log-viewer" style="background: #1e293b; color: #e2e8f0; font-family: "Courier New", monospace; font-size: 13px; padding: 16px; border-radius: 8px; max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5;">';
+            html += '<div class="loading" style="color: #94a3b8;">Loading logs...</div>';
+            html += '</div>';
+            
+            content.innerHTML = html;
+            
+            // Set log level filter if changed
+            const levelSelect = document.getElementById('log-level');
+            if (levelSelect && currentLogLevel !== 'all') {
+                levelSelect.value = currentLogLevel;
+            }
+            
+            // Load log data
+            try {
+                const levelParam = currentLogLevel !== 'all' ? `&level=${currentLogLevel}` : '';
+                const data = await fetchAPI(`logs?type=${currentLogType}&lines=${currentLogLines}${levelParam}`);
+                
+                const logViewer = document.getElementById('log-viewer');
+                if (!logViewer) return;
+                
+                if (data.error) {
+                    logViewer.innerHTML = `<div style="color: #f87171;">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                if (data.logs && data.logs.length > 0) {
+                    let logHtml = '';
+                    data.logs.forEach(log => {
+                        // Color code by log level
+                        let levelColor = '#94a3b8'; // default gray
+                        if (log.level) {
+                            const level = log.level.toUpperCase();
+                            if (level === 'DEBUG') levelColor = '#60a5fa';
+                            else if (level === 'INFO') levelColor = '#34d399';
+                            else if (level === 'WARNING') levelColor = '#fbbf24';
+                            else if (level === 'ERROR') levelColor = '#f87171';
+                            else if (level === 'CRITICAL') levelColor = '#ef4444';
+                        }
+                        
+                        logHtml += `<div style="margin-bottom: 4px; padding: 4px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.1);">`;
+                        if (log.timestamp) {
+                            logHtml += `<span style="color: #64748b; margin-right: 12px;">${log.timestamp}</span>`;
+                        }
+                        if (log.level) {
+                            logHtml += `<span style="color: ${levelColor}; font-weight: 600; margin-right: 12px; min-width: 80px; display: inline-block;">${log.level}</span>`;
+                        }
+                        logHtml += `<span style="color: #e2e8f0;">${log.message}</span>`;
+                        logHtml += `</div>`;
+                    });
+                    
+                    logViewer.innerHTML = logHtml;
+                    
+                    // Auto-scroll to bottom if enabled
+                    if (logAutoScroll) {
+                        logViewer.scrollTop = logViewer.scrollHeight;
+                    }
+                } else {
+                    logViewer.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 40px;">No log entries found</div>';
+                }
+                
+                // Update log count display
+                const logCount = document.createElement('div');
+                logCount.style.cssText = 'margin-top: 12px; color: #94a3b8; font-size: 12px;';
+                logCount.textContent = `Showing ${data.count} of ${data.total_lines || 0} lines from ${data.log_file || 'log file'}`;
+                content.appendChild(logCount);
+                
+            } catch (error) {
+                const logViewer = document.getElementById('log-viewer');
+                if (logViewer) {
+                    logViewer.innerHTML = `<div style="color: #f87171;">Error loading logs: ${error.message}</div>`;
+                }
+            }
+            
+            // Start auto-refresh if not already started
+            if (!logRefreshInterval) {
+                logRefreshInterval = setInterval(() => {
+                    if (document.querySelector('#logs.tab-content.active')) {
+                        loadLogs();
+                    }
+                }, 5000); // Refresh every 5 seconds
+            }
+        }
+        
+        function clearLogs() {
+            const logViewer = document.getElementById('log-viewer');
+            if (logViewer) {
+                logViewer.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 40px;">Logs cleared</div>';
+            }
+        }
+        
         async function loadChangelog() {
             const content = document.getElementById('changelog-content');
             if (!content) return;
