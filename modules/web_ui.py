@@ -1487,6 +1487,7 @@ def get_web_ui_html() -> str:
             <button class="tab" onclick="showTab('management', this)">👥 Management</button>
             <button class="tab" onclick="showTab('leaderboard', this)">🏆 Leaderboard</button>
             <button class="tab" onclick="showTab('update', this)">🔄 Update</button>
+            <button class="tab" onclick="showTab('logs', this)">📋 Logs</button>
             <button class="tab" onclick="showTab('config', this)">⚙️ Config</button>
         </div>
         
@@ -1499,6 +1500,11 @@ def get_web_ui_html() -> str:
             <div id="update" class="tab-content">
                 <h2>🔄 Auto-Update</h2>
                 <div id="update-content" class="loading">Loading update status...</div>
+            </div>
+            
+            <div id="logs" class="tab-content">
+                <h2>📋 Log Viewer</h2>
+                <div id="logs-content" class="loading">Loading logs...</div>
             </div>
             
             <div id="config" class="tab-content">
@@ -1676,6 +1682,8 @@ def get_web_ui_html() -> str:
                     loadConfig();
                 } else if (tabName === 'update') {
                     loadUpdateStatus();
+                } else if (tabName === 'logs') {
+                    loadLogs();
                 } else if (tabName === 'map') {
                     initMap();
                 } else if (tabName === 'bbs') {
@@ -3300,6 +3308,8 @@ def get_web_ui_html() -> str:
                     loadManagement();
                 } else if (activeTab === 'statistics') {
                     loadStatistics();
+                } else if (activeTab === 'logs') {
+                    loadLogs();
                 } else {
                     refreshData();
                 }
