@@ -259,18 +259,23 @@ def get_rf_telemetry(interface_num: Optional[int] = None) -> Dict[str, Any]:
             interface_key = f"interface_{i}"
             telemetry = local_telemetry_data[i]
             
+            # Helper to safely get values, handling None
+            def safe_get(key, default=0):
+                value = telemetry.get(key, default)
+                return value if value is not None else default
+            
             result[interface_key] = {
                 "interfaceNumber": i,
-                "numPacketsTx": telemetry.get('numPacketsTx', 0),
-                "numPacketsRx": telemetry.get('numPacketsRx', 0),
-                "numPacketsTxErr": telemetry.get('numPacketsTxErr', 0),
-                "numPacketsRxErr": telemetry.get('numPacketsRxErr', 0),
-                "numOnlineNodes": telemetry.get('numOnlineNodes', 0),
-                "numTotalNodes": telemetry.get('numTotalNodes', 0),
-                "numRXDupes": telemetry.get('numRXDupes', 0),
-                "numTxRelays": telemetry.get('numTxRelays', 0),
-                "heapFreeBytes": telemetry.get('heapFreeBytes', 0),
-                "heapTotalBytes": telemetry.get('heapTotalBytes', 0)
+                "numPacketsTx": safe_get('numPacketsTx', 0),
+                "numPacketsRx": safe_get('numPacketsRx', 0),
+                "numPacketsTxErr": safe_get('numPacketsTxErr', 0),
+                "numPacketsRxErr": safe_get('numPacketsRxErr', 0),
+                "numOnlineNodes": safe_get('numOnlineNodes', 0),
+                "numTotalNodes": safe_get('numTotalNodes', 0),
+                "numRXDupes": safe_get('numRXDupes', 0),
+                "numTxRelays": safe_get('numTxRelays', 0),
+                "heapFreeBytes": safe_get('heapFreeBytes', 0),
+                "heapTotalBytes": safe_get('heapTotalBytes', 0)
             }
     
     # Add timing data from interface 0
@@ -909,24 +914,40 @@ def get_web_ui_html() -> str:
             for (const key in data) {
                 if (key.startsWith('interface_')) {
                     const tel = data[key];
+                    // Safely get values with defaults
+                    const tx = (tel.numPacketsTx || 0);
+                    const rx = (tel.numPacketsRx || 0);
+                    const txErr = (tel.numPacketsTxErr || 0);
+                    const rxErr = (tel.numPacketsRxErr || 0);
+                    const online = (tel.numOnlineNodes || 0);
+                    const total = (tel.numTotalNodes || 0);
+                    
                     html += `
                         <div class="card">
-                            <h3>Interface ${tel.interfaceNumber}</h3>
+                            <h3>Interface ${tel.interfaceNumber || 'Unknown'}</h3>
                             <div class="stat">
                                 <span>Packets TX</span>
-                                <span><strong>${tel.numPacketsTx.toLocaleString()}</strong></span>
+                                <span><strong>${tx.toLocaleString()}</strong></span>
                             </div>
                             <div class="stat">
                                 <span>Packets RX</span>
-                                <span><strong>${tel.numPacketsRx.toLocaleString()}</strong></span>
+                                <span><strong>${rx.toLocaleString()}</strong></span>
                             </div>
                             <div class="stat">
                                 <span>TX Errors</span>
-                                <span><strong>${tel.numPacketsTxErr.toLocaleString()}</strong></span>
+                                <span><strong>${txErr.toLocaleString()}</strong></span>
                             </div>
                             <div class="stat">
                                 <span>RX Errors</span>
-                                <span><strong>${tel.numPacketsRxErr.toLocaleString()}</strong></span>
+                                <span><strong>${rxErr.toLocaleString()}</strong></span>
+                            </div>
+                            <div class="stat">
+                                <span>Online Nodes</span>
+                                <span><strong>${online}</strong></span>
+                            </div>
+                            <div class="stat">
+                                <span>Total Nodes</span>
+                                <span><strong>${total}</strong></span>
                             </div>
                         </div>
                     `;
