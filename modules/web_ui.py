@@ -660,6 +660,7 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
             elif path_parts[0] == 'events':
                 # Server-Sent Events endpoint for real-time updates
+                global update_interval, auto_update_enabled
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/event-stream')
                 self.send_header('Cache-Control', 'no-cache')
