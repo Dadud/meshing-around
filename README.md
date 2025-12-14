@@ -1,170 +1,1093 @@
-# Mesh Bot for Network Testing and BBS Activities
+# Meshing Around - Meshtastic Bot Framework
 
-Mesh Bot is a feature-rich Python bot designed to enhance your [Meshtastic](https://meshtastic.org/docs/introduction/) network experience. It provides powerful tools for network testing, messaging, games, and more—all via text-based message delivery. Whether you want to test your mesh, send messages, or play games, [mesh_bot.py](mesh_bot.py) has you covered.
-
-* [Getting Started](#getting-started)
+A comprehensive, feature-rich Python bot framework designed to enhance your [Meshtastic](https://meshtastic.org/docs/introduction/) mesh network experience. This bot provides powerful tools for network testing, messaging, games, monitoring, and automation—all via text-based message delivery over your mesh network.
 
 ![Example Use](etc/pong-bot.jpg "Example Use")
 
-#### TLDR
-* [install.sh](INSTALL.md)
-* [Configuration Guide](modules/README.md)
-* [Games Help](modules/games/README.md)
+## Table of Contents
 
-## Key Features
-![CodeQlBadge](https://github.com/SpudGunMan/meshing-around/actions/workflows/dynamic/github-code-scanning/codeql/badge.svg)
+- [Quick Start](#quick-start)
+- [Architecture Overview](#architecture-overview)
+- [Installation](#installation)
+- [Configuration Guide](#configuration-guide)
+- [Core Features](#core-features)
+- [Module System](#module-system)
+- [Multi-Interface Support](#multi-interface-support)
+- [Web UI Dashboard](#web-ui-dashboard)
+- [MCP Server API](#mcp-server-api)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Recognition](#recognition)
 
-### Intelligent Keyword Responder
-- **Automated Responses**: Detects keywords like "ping" and replies with "pong" in direct messages (DMs) or group channels.
-- **Customizable Triggers**: Monitors group channels for specific keywords and sends custom responses.
-- **Emergency Detection**: Watches for emergency-related keywords and alerts a wider audience.
-- **New Node Greetings**: Automatically welcomes new nodes joining the mesh.
+---
 
-### Network Tools
-- **Mesh Testing**: Use `ping` to test message delivery with realistic packets.
-- **Hardware Testing**: The `test` command sends incrementally sized data to test radio buffer limits.
-- **Network Monitoring**: Alerts for noisy nodes, tracks node locations, and suggests optimal relay placement.
+## Quick Start
 
-- **Site Survey & Location Logging**: Use the `map` command to log your current GPS location with a custom description—ideal for site surveys, asset tracking, or mapping nodes locations. Entries are saved to a CSV file for later analysis or visualization.
+### TLDR Installation
 
-### Multi-Radio/Node Support
-- **Simultaneous Monitoring**: Observe up to nine networks at once.
-- **Flexible Messaging**: Send mail and messages between networks.
+1. **Clone the repository:**
+   ```sh
+   git clone https://github.com/spudgunman/meshing-around
+   cd meshing-around
+   ```
 
-### Advanced Messaging Capabilities
-- **Mail Messaging**: Leave messages for other devices; delivered as DMs when the device is next seen. Use `bbspost @nodeNumber #message` or `bbspost @nodeShortName #message`.
-- **Message Scheduler**: Automate messages such as weather updates or net reminders.
-- **Store and Forward**: Retrieve missed messages with the `messages` command; optionally log messages to disk.
-- **BBS Linking**: Connect multiple bots to expand BBS coverage.
-- **E-Mail/SMS Integration**: Send mesh messages to email or SMS for broader reach.
-- **New Node Greetings**: Automatically greet new nodes via text.
+2. **Run automated installer:**
+   ```sh
+   bash install.sh
+   ```
+   See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 
-### Interactive AI and Data Lookup
-- **Weather, Earthquake, River, and Tide Data**: Get local alerts and info from NOAA/USGS; uses Open-Meteo for areas outside NOAA coverage.
-- **Wikipedia Search**: Retrieve summaries from Wikipedia and Kiwix
-- **OpenWebUI, Ollama LLM Integration**: Query the [Ollama](https://github.com/ollama/ollama/tree/main/docs) AI for advanced responses. Supports RAG (Retrieval Augmented Generation) with Wikipedia/Kiwix context and [OpenWebUI](https://github.com/open-webui/open-webui) integration for enhanced AI capabilities. [LLM Readme](modules/llm.md)
-- **Satellite Passes**: Find upcoming satellite passes for your location.
-- **GeoMeasuring Tools**: Calculate distances and midpoints using collected GPS data; supports Fox & Hound direction finding.
-- **RSS & News Feeds**: Receive news and data from multiple sources directly on the mesh.
+3. **Configure the bot:**
+   ```sh
+   cp config.template config.ini
+   nano config.ini  # Edit with your settings
+   ```
 
-### Proximity Alerts
-- **Location-Based Alerts**: Get notified when members arrive at a configured latitude/longitude—ideal for campsites, geo-fences, or remote locations. Optionally, trigger scripts, send emails, or automate actions (e.g., change node config, turn on lights, or drop an `alert.txt` file to start a survey or game).
-- **Customizable Triggers**: Use proximity events for creative applications like "king of the hill" or 🧭 geocache games by adjusting the alert cycle.
-- **High Flying Alerts**: Receive notifications when nodes with high altitude are detected on the mesh.
-- **Voice/Command Triggers**: Activate bot functions using keywords or voice commands (see [Voice Commands](#voice-commands-vox) for "Hey Chirpy!" support).
-- **YOLOv5 alerts**: Use camera modules to detect objects or OCR
+4. **Start the bot:**
+   ```sh
+   python3 mesh_bot.py
+   # Or if using systemd service:
+   sudo systemctl start mesh_bot
+   ```
 
-### EAS Alerts
-- **FEMA iPAWS/EAS Alerts**: Receive Emergency Alerts from FEMA via API on internet-connected nodes.
-- **NOAA EAS Alerts**: Get Emergency Alerts from NOAA via API.
-- **USGS Volcano Alerts**: Receive volcano alerts from USGS via API.
-- **NINA Alerts (Germany)**: Receive emergency alerts from the xrepository.de feed for Germany.
-- **Offline EAS Alerts**: Report EAS alerts over the mesh using external tools, even without internet.
+### Quick Links
 
-### File Monitor Alerts
-- **File Monitoring**: Watch a text file for changes and broadcast updates to the mesh channel.
-- **News File Access**: Retrieve the contents of a news file on request; supports multiple news sources or files.
-- **Shell Command Access**: Execute shell commands via DM with replay protection (admin only).
+- [Installation Guide](INSTALL.md) - Detailed setup instructions
+- [Module Configuration](modules/README.md) - Complete module documentation
+- [Games Documentation](modules/games/README.md) - Game commands and rules
+- [Docker Setup](script/docker/README.md) - Docker installation guide
 
-#### Radio Frequency Monitoring
-- **SNR RF Activity Alerts**: Monitor radio frequencies and receive alerts when high SNR (Signal-to-Noise Ratio) activity is detected.
-- **Hamlib Integration**: Use Hamlib (rigctld) to monitor the S meter on a connected radio.
-- **Speech-to-Text Broadcasting**: Convert received audio to text using [Vosk](https://alphacephei.com/vosk/models) and broadcast it to the mesh.
-- **WSJT-X Integration**: Monitor WSJT-X (FT8, FT4, WSPR, etc.) decode messages and forward them to the mesh network with optional callsign filtering.
-- **JS8Call Integration**: Monitor JS8Call messages and forward them to the mesh network with optional callsign filtering.
-- **Meshages TTS**: The bot can speak mesh messages aloud using [KittenTTS](https://github.com/KittenML/KittenTTS). Enable this feature to have important alerts and messages read out loud on your device—ideal for hands-free operation or accessibility. See [radio.md](modules/radio.md) for setup instructions.
-- **Offline Tone out Decoder**: Decode fire Tone out and DTMF and action with alerts to mesh
+---
 
-### Asset Tracking, Check-In/Check-Out, and Inventory Management
-Advanced check-in/check-out and asset tracking for people and equipment—ideal for accountability, safety monitoring, and logistics (e.g., Radio-Net, FEMA, trailhead groups). Admin approval workflows, GPS location capture, and overdue alerts. The integrated inventory and point-of-sale (POS) system enables item management, sales tracking, cart-based transactions, and daily reporting, for swaps, emergency supply management, and field operations, maker-places.
+## Architecture Overview
 
-### Fun and Games
-- **Built-in Games**: Play classic games like DopeWars, Lemonade Stand, BlackJack, and Video Poker directly via DM.
-- **FCC ARRL QuizBot**: Practice for the ham radio exam with the integrated quiz bot.
-- **Command-Based Gameplay**: Use the `games` command to view available games and start playing.
-- **Telemetry Leaderboard**: Compete for fun stats like lowest battery or coldest temperature.
+### System Design
 
-#### QuizMaster
-- **Group Quizzes**: Admins can start and stop quiz games for groups.
-- **Player Participation**: Players join with `q: join`, leave with `q: leave`, and answer questions by prefixing their answer with `q:`, e.g., `q: 42`.
-- **Scoring & Leaderboards**: Check your score with `q: score` and see the top performers with `q: top`.
-- **Admin Controls**: QuizMasters (from `bbs_admin_list`) can use `q: start`, `q: stop`, and `q: broadcast <message>` to manage games.
+The bot is built on an event-driven architecture using Python's `asyncio` and the Meshtastic Python library's pubsub system. Here's how it works:
 
-#### Survey Module
-- **Custom Surveys**: Create and manage surveys by editing JSON files in `data/survey`. Multiple surveys are supported (e.g., `survey snow`).
-- **User Feedback**: Users participate via DM; responses are logged for review.
-- **Reporting**: Retrieve survey results with `survey report` or `survey report <surveyname>`.
+1. **Message Reception**: The bot subscribes to Meshtastic's pubsub events (`mesh.rx.portnum`) to receive all incoming packets
+2. **Packet Processing**: Each packet is processed by `onReceive()` which extracts message data, routing information, and metadata
+3. **Command Detection**: Messages are checked against a `trap_list` of keywords/commands via `messageTrap()`
+4. **Command Routing**: Detected commands are routed to handler functions via a command dictionary in `auto_response()`
+5. **Response Generation**: Handlers generate responses which are sent back via `send_message()` with automatic chunking for long messages
 
-### Data Reporting
-- **HTML Reports**: Visualize bot traffic and data flows with a built-in HTML generator. See [data reporting](logs/README.md) for details.
+### Core Components
 
-### Web UI Dashboard
-- **Interactive Dashboard**: Access a web-based dashboard at `http://your-bot-ip:8420` to monitor your mesh network in real-time.
-- **Node Map**: Visualize node locations on an interactive map using OpenStreetMap. Nodes with position data are automatically displayed and updated as packets are received.
-- **BBS Viewer**: Browse all Bulletin Board System messages and pending Direct Messages through the web interface.
-- **RF Telemetry**: Monitor packet statistics, transmission/reception counts, and error rates for all interfaces.
-- **Configuration Management**: Edit bot settings directly through the web interface with automatic backup on save.
-- **Real-time Updates**: All data auto-refreshes every 10 seconds to keep information current.
-- **Disable Web UI**: Set `enabled = False` in the `[web_ui]` section of `config.ini` to disable the web interface.
+- **`mesh_bot.py`**: Main entry point, command handlers, and message routing logic
+- **`modules/system.py`**: Interface management, packet handling, telemetry collection, and watchdog functions
+- **`modules/settings.py`**: Configuration file parsing and global settings management
+- **`modules/log.py`**: Logging infrastructure with colored output and file rotation
+- **`modules/web_ui.py`**: Web-based dashboard and configuration interface
+- **`modules/mcp_server.py`**: RESTful API server for programmatic data access
 
-### MCP Server API
-- **RESTful API**: Access read-only node and RF telemetry data via JSON API endpoints on port 8421 (default).
-- **CORS Enabled**: API can be accessed from web applications and other services.
-- **Endpoints**: `/api/nodes`, `/api/telemetry`, `/api/position`, `/api/leaderboard` for programmatic access to mesh data.
-- **Disable MCP Server**: Set `enabled = False` in the `[mcp_server]` section of `config.ini` to disable the API server.
+### Data Flow
 
-### Robust Message Handling
-- **Automatic Message Chunking**: Messages over 160 characters are automatically split to ensure reliable delivery across multiple hops.
+```
+Meshtastic Device → Interface (Serial/TCP/BLE) → PubSub Event → onReceive() 
+→ messageTrap() → auto_response() → Command Handler → send_message() → Interface → Mesh Network
+```
 
-## Getting Started
-This project is developed on Linux (specifically a Raspberry Pi) but should work on any platform where the [Meshtastic protobuf API](https://meshtastic.org/docs/software/python/cli/) modules are supported, and with any compatible [Meshtastic](https://meshtastic.org/docs/getting-started/) hardware, however it is **recomended to use the latest firmware code**. For pico or low-powered devices, see projects for embedding, armbian or [buildroot](https://github.com/buildroot-meshtastic/buildroot-meshtastic), also see [femtofox](https://github.com/noon92/femtofox) for running on luckfox hardware. If you need a local console consider the [firefly](https://github.com/pdxlocations/firefly) project. 
+### In-Memory Data Structures
 
-🥔 Please use responsibly and follow local rulings for such equipment. This project captures packets, logs them, and handles over the air communications which can include PII such as GPS locations.
+The bot maintains several global data structures that are shared across modules:
 
-### Quick Setup 
-#### Clone the Repository
-If you dont have git you will need it `sudo apt-get install git`
+- **`interface.nodes`**: Node database from each Meshtastic interface (node info, positions, user data)
+- **`localTelemetryData`**: RF telemetry (SNR, RSSI, packet counts, errors)
+- **`positionMetadata`**: GPS position history and metadata for all nodes
+- **`meshLeaderboard`**: Competitive metrics (lowest battery, coldest temp, etc.)
+- **`bbs_messages`**: Bulletin Board System public messages
+- **`bbs_dm`**: Store-and-forward direct messages
+- **`msg_history`**: Message history for the `messages` command
+- **`cmdHistory`**: Command execution history
+- **`seenNodes`**: Recently seen nodes with timestamps
+- **`bbs_ban_list`**: Banned node IDs
+- **`bbs_admin_list`**: Admin node IDs with elevated permissions
+
+---
+
+## Installation
+
+### System Requirements
+
+- **Python**: 3.8 or later (Python 3.13+ supported in Docker)
+- **Operating System**: Linux (Raspberry Pi, Debian/Ubuntu recommended), Windows (via Docker), macOS
+- **Hardware**: Any Meshtastic-compatible device (T-Beam, T-Echo, Heltec, etc.)
+- **Firmware**: Latest Meshtastic firmware recommended (2.6+ for full feature support)
+
+### Installation Methods
+
+#### 1. Automated Installation (Recommended)
+
+The `install.sh` script automates the entire setup process:
+
 ```sh
+bash install.sh
+```
+
+**What it does:**
+- Checks for Python and pip, installs if missing
+- Creates project directory (optionally moves to `/opt/meshing-around`)
+- Sets up user permissions for serial/Bluetooth access
+- Creates Python virtual environment (optional)
+- Installs all dependencies from `requirements.txt`
+- Configures systemd service files
+- Sets up log and data directories with proper permissions
+- Offers to install optional components (emoji fonts, Ollama LLM)
+- Can enable and start the bot as a systemd service
+
+**Uninstall:**
+```sh
+bash install.sh --nope
+```
+
+#### 2. Manual Installation
+
+```sh
+# Clone repository
 git clone https://github.com/spudgunman/meshing-around
+cd meshing-around
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and edit configuration
+cp config.template config.ini
+nano config.ini
+
+# Run the bot
+python3 mesh_bot.py
 ```
-- **Automated Installation**: [install.sh](INSTALL.md) will automate optional venv and requirements installation.
-- **Launch Script**: [laynch.sh](INSTALL.md) only used in a venv install, to launch the bot and the report generator.
 
-### Docker Installation
-Good for windows or OpenWebUI enabled bots
+#### 3. Docker Installation
 
-[docker.md](script/docker/README.md)
+See [script/docker/README.md](script/docker/README.md) for complete Docker setup instructions. Docker is recommended for:
+- Windows users
+- Isolated environments
+- OpenWebUI integration
+- Easy deployment and updates
 
-## Module Help
-Configuration Guide
-[modules/README.md](modules/README.md)
+### Post-Installation
 
-### Game Help
-Games are DM only by default
+1. **Configure your interface**: Edit `config.ini` and set your device port/hostname
+2. **Set your location**: Update `latitudeValue` and `longitudeValue` for location-based features
+3. **Enable desired modules**: Configure modules in `config.ini` (see [Configuration Guide](#configuration-guide))
+4. **Test the connection**: Run `python3 mesh_bot.py` and verify it connects to your device
+5. **Set up as service** (optional): Use systemd service for automatic startup
 
-[modules/games/README.md](modules/games/README.md)
+---
 
-### Firmware 2.6 DM Key, and 2.7 CLIENT_BASE Favorite Nodes
-Firmware 2.6 introduced [PKC](https://meshtastic.org/blog/introducing-new-public-key-cryptography-in-v2_5/), enabling secure private messaging by adding necessary keys to each node. To fully utilize this feature, you should add favorite nodes—such as BBS admins—to your node’s favorites list to ensure their keys are retained. A helper script is provided to simplify this process:
-- Run the helper script from the main program directory: `python3 script/addFav.py`
-- By default, this script adds nodes from `bbs_admin_list` and `bbslink_whitelist`
-- If using a virtual environment, run: `launch.sh addfav`
-- The API will not work-fully today to set nodes this is a WIP
+## Configuration Guide
 
-Additionally, you can just DM a bot to "auto favorite." If your node is set to not be messageable, DMs won't work—be advised.
+### Configuration File Structure
 
-To configure favorite nodes, add their numbers to your config file:
-```conf
+The bot uses `config.ini` (INI format) for all configuration. A template is provided as `config.template`. The configuration is organized into logical sections:
+
+#### Core Sections
+
+- **`[general]`**: Basic bot behavior, response settings, logging, LLM configuration
+- **`[interface]`**: Primary radio interface (required)
+- **`[interface2]` through `[interface9]`**: Additional interfaces (optional)
+- **`[sentry]`**: Proximity alert system configuration
+- **`[bbs]`**: Bulletin Board System settings
+- **`[web_ui]`**: Web dashboard configuration
+- **`[mcp_server]`**: MCP API server configuration
+- **`[games]`**: Game module enable/disable flags
+- **`[scheduler]`**: Automated message scheduling
+- **`[fileMon]`**: File monitoring for alerts
+- **`[emergencyHandler]`**: Emergency keyword detection
+- **`[smtp]`**: Email/SMS integration
+- **`[checklist]`**: Check-in/check-out system
+- **`[inventory]`**: Inventory and POS system
+- **`[qrz]`**: QRZ.com integration
+- **`[messagingSettings]`**: Message chunking and delays
+
+### Essential Configuration
+
+#### 1. Interface Configuration
+
+**Single Interface (Serial):**
+```ini
+[interface]
+type = serial
+port = /dev/ttyACM0
+```
+
+**Single Interface (TCP - for meshtasticd or remote nodes):**
+```ini
+[interface]
+type = tcp
+hostname = 192.168.1.100:4403
+```
+
+**Single Interface (BLE):**
+```ini
+[interface]
+type = ble
+mac = AA:BB:CC:DD:EE:FF
+```
+
+**Multiple Interfaces:**
+```ini
+[interface]
+type = serial
+port = /dev/ttyACM0
+
+[interface2]
+enabled = True
+type = tcp
+hostname = 192.168.1.100:4403
+
+[interface3]
+enabled = True
+type = serial
+port = /dev/ttyUSB0
+```
+
+#### 2. Basic Bot Settings
+
+```ini
 [general]
-favoriteNodeList = # list of favorite nodes numbers ex: 2813308004,4258675309 used by script/addFav.py
+# Response behavior
+respond_by_dm_only = True          # Only respond to DMs (recommended)
+defaultChannel = 0                 # Public channel number
+ignoreDefaultChannel = False       # Ignore messages on default channel
+explicitCmd = True                 # Require explicit commands (not just keywords)
+
+# Location (required for location-based features)
+latitudeValue = 45.5152
+longitudeValue = -122.6784
+
+# Logging
+LogMessagesToFile = False         # Log all messages to file
+SyslogToFile = True               # Log system messages
+sysloglevel = DEBUG               # DEBUG, INFO, WARNING, ERROR, CRITICAL
+LogBackupCount = 32               # Days of logs to keep
+
+# Welcome message
+welcome_message = Welcome to the mesh bot! Send 'cmd' for commands.
 ```
 
-### MQTT Notes
-There is no direct support for MQTT in the code, however, reports from Discord are that using [meshtasticd](https://meshtastic.org/docs/hardware/devices/linux-native-hardware/) with no radio and attaching the bot to the software node, which is MQTT-linked, allows routing. Tested working fully Firmware:2.6.11 with [mosquitto](https://meshtastic.org/docs/software/integrations/mqtt/mosquitto/).
+#### 3. Module Enable/Disable
 
-~~There also seems to be a quicker way to enable MQTT by having your bot node with the enabled [serial](https://meshtastic.org/docs/configuration/module/serial/) module with echo enabled and MQTT uplink and downlink. These two~~ 
+Most modules can be enabled/disabled via configuration:
 
-# Recognition
+```ini
+[general]
+# Feature toggles
+ping_enabled = True               # Enable ping/pong responses
+motdEnabled = True                 # Message of the day
+whoami = True                      # Who am I command
+spaceWeather = True                # Solar conditions, moon phases
+wikipedia = False                  # Wikipedia search
+ollama = False                     # LLM/AI integration
+location_enabled = True             # Location-based features
+
+[sentry]
+SentryEnabled = False              # Proximity alerts
+
+[bbs]
+enabled = True                     # Bulletin Board System
+
+[games]
+dopeWars = True
+lemonade = True
+blackjack = True
+videoPoker = True
+```
+
+### Advanced Configuration
+
+#### Message Chunking
+
+Long messages are automatically split to fit within Meshtastic's packet size limits:
+
+```ini
+[messagingSettings]
+MESSAGE_CHUNK_SIZE = 160          # Characters per chunk
+splitDelay = 0                     # Delay between chunks (seconds)
+responseDelay = 0.7                # Delay before sending response
+```
+
+#### Store and Forward
+
+Enable message storage for offline nodes:
+
+```ini
+[general]
+StoreForward = True                # Enable store-and-forward
+StoreLimit = 3                     # Max messages to store per node
+reverseSF = False                  # Send oldest first (False) or newest first (True)
+```
+
+#### Anti-Spam Protection
+
+Prevents the bot from flooding channels:
+
+```ini
+[general]
+antiSpam = True                    # Enable anti-spam (recommended)
+```
+
+When enabled, the bot will:
+- Only respond on non-default channels
+- Throttle responses to prevent flooding
+- Ignore rapid repeated commands
+
+#### LLM/AI Configuration
+
+```ini
+[general]
+ollama = True                      # Enable Ollama integration
+ollamaHostName = http://localhost:11434
+ollamaModel = gemma3:270m          # Model to use
+rawLLMQuery = True                 # Send raw queries (no system prompt)
+llmReplyToNonCommands = True       # Reply to non-command DMs with AI
+llmUseWikiContext = False          # Use Wikipedia for RAG context
+useOpenWebUI = False               # Use OpenWebUI instead of direct Ollama
+openWebUIURL = http://localhost:3000
+openWebUIAPIKey =                  # API key if required
+```
+
+### Configuration via Web UI
+
+The Web UI provides a user-friendly interface for editing configuration. See [Web UI Dashboard](#web-ui-dashboard) section.
+
+---
+
+## Core Features
+
+### Message Handling
+
+#### Command Detection
+
+The bot uses a two-stage command detection system:
+
+1. **Trap List**: `messageTrap()` checks if a message contains any keyword from `trap_list` (built from enabled modules)
+2. **Command Dictionary**: `auto_response()` matches the first detected command to a handler function
+
+Commands can be:
+- **Explicit**: Must be the first word (`ping`, `cmd`, `bbslist`)
+- **Keyword-based**: Detected anywhere in message (configurable)
+- **DM-only**: Some commands only work in direct messages (games, admin functions)
+
+#### Response Modes
+
+- **DM-only mode** (`respond_by_dm_only = True`): Bot only responds to direct messages
+- **Channel mode** (`respond_by_dm_only = False`): Bot responds on channels (use with caution to avoid spam)
+
+#### Message Chunking
+
+Messages longer than `MESSAGE_CHUNK_SIZE` (default 160 characters) are automatically split into multiple packets. The bot:
+- Splits at word boundaries when possible
+- Adds chunk indicators (e.g., "1/3", "2/3", "3/3")
+- Sends chunks with configurable delay between them
+
+### Network Testing
+
+#### Ping Command
+
+The `ping` command is the primary network testing tool:
+
+```
+ping                    # Basic ping, returns SNR/RSSI/hop count
+ping 10                 # Auto-ping 10 times (DM only)
+ping @username          # Ping specific user (triggers BBS DM joke if enabled)
+ping stop               # Stop auto-ping
+ping ?                  # Help (DM only)
+```
+
+**Response format:**
+```
+🏓PONG [RF]
+SNR: 12.5, RSSI: -80, Hops: 2
+```
+
+- `[RF]` = Received via direct radio
+- `[GW]` = Received via gateway (internet/MQTT)
+- `[F]` = Received via mesh/flood route
+
+#### Test Command
+
+Tests radio buffer limits by sending incrementally sized data:
+
+```
+test 4                  # Send data up to maxBuffer limit (DM only)
+```
+
+### Multi-Interface Support
+
+The bot can simultaneously monitor up to 9 Meshtastic interfaces:
+
+- **Interface Types**: Serial (USB), TCP (network), BLE (Bluetooth)
+- **Independent Channels**: Each interface can use different channels
+- **Cross-Interface Messaging**: Send messages between interfaces
+- **Unified Node Database**: All interfaces share the same node information
+
+**Configuration Example:**
+```ini
+[interface]
+type = serial
+port = /dev/ttyACM0
+
+[interface2]
+enabled = True
+type = tcp
+hostname = 192.168.1.100:4403
+
+[interface3]
+enabled = True
+type = serial
+port = /dev/ttyUSB0
+```
+
+### Bulletin Board System (BBS)
+
+A store-and-forward messaging system for the mesh network:
+
+**Commands:**
+- `bbslist` - List all public messages
+- `bbspost $subject #message` - Post a public message
+- `bbspost @nodeNumber #message` - Send DM to specific node
+- `bbspost @shortName #message` - Send DM using short name
+- `bbsread #` - Read message by number
+- `bbsdelete #` - Delete message (author or admin only)
+- `bbsinfo` - Get BBS statistics
+- `bbshelp` - Show help
+
+**Features:**
+- Public message board accessible to all nodes
+- Direct message store-and-forward
+- Message threading and replies
+- Admin controls for moderation
+- BBS linking between multiple bots
+- Message persistence (survives bot restarts)
+
+**Configuration:**
+```ini
+[bbs]
+enabled = True
+bbs_admin_list = 2813308004,4258675309    # Admin node IDs
+bbs_ban_list =                            # Banned node IDs
+bbs_link_enabled = False                   # Link with other bots
+bbslink_whitelist =                        # Allowed linked bots
+```
+
+### Location-Based Features
+
+#### Map Command
+
+Log GPS locations with descriptions:
+
+```
+map Survey point 1
+map Radio site - good coverage
+```
+
+Locations are saved to `data/map.csv` for analysis.
+
+#### Proximity Alerts (Sentry)
+
+Get notified when nodes enter/exit a configured area:
+
+```ini
+[sentry]
+SentryEnabled = True
+SentryRadius = 100                        # Meters
+SentryInterface = 1
+SentryChannel = 2
+sentryWatchList = 2813308004              # Nodes to watch
+sentryIgnoreList =                        # Nodes to ignore
+SentryHoldoff = 9                         # Alert holdoff (20s * 9 = 3 minutes)
+```
+
+**Use Cases:**
+- Geofencing for campsites or events
+- Asset tracking
+- "King of the hill" games
+- Automated actions (trigger scripts, send emails)
+
+#### High Altitude Alerts
+
+Detect nodes at high altitude (balloons, aircraft):
+
+```ini
+[sentry]
+highFlyingAlert = True
+highFlyingAlertAltitude = 2000           # Meters
+highFlyingAlertInterface = 1
+highFlyingAlertChannel = 2
+highFlyingIgnoreList =                    # Nodes to ignore
+highflyOpenskynetwork = True              # Check OpenSky Network for aircraft
+```
+
+### Weather and Environmental Data
+
+#### Weather Commands
+
+- `wx` - Current weather (NOAA or Open-Meteo)
+- `wxc` - Weather conditions (Open-Meteo worldwide)
+- `mwx` - Marine weather
+- `river` - River flow data
+- `tide` - Tide information
+
+#### Earthquake Data
+
+- `earthquake` - Recent earthquakes (USGS)
+
+#### Solar Conditions
+
+- `solar` - Solar conditions and space weather
+- `hfcond` - HF band conditions
+- `sun` - Sun position and info
+- `moon` - Moon phase and position
+
+### Emergency Alerts
+
+#### EAS (Emergency Alert System)
+
+Receive emergency alerts from various sources:
+
+```ini
+[general]
+enableUSAlerts = True                     # FEMA iPAWS alerts
+enableNOAAAlerts = True                   # NOAA alerts
+enableUSGSAlerts = True                   # USGS volcano alerts
+enableDEalerts = False                    # NINA alerts (Germany)
+```
+
+**Commands:**
+- `ea` or `ealert` - Get recent emergency alerts
+
+### File Monitoring
+
+Monitor a text file for changes and broadcast to mesh:
+
+```ini
+[fileMon]
+enabled = True
+file_path = alert.txt
+broadcastCh = 2
+```
+
+When `alert.txt` changes, the new content is broadcast to the configured channel. Useful for:
+- External system integration
+- Automated announcements
+- Triggering surveys or games
+
+### Scheduler
+
+Automate messages on a schedule:
+
+```ini
+[scheduler]
+enabled = True
+```
+
+Configure scheduled tasks in `etc/custom_scheduler.template`. Supports:
+- Weather updates
+- Net reminders
+- MOTD updates
+- Custom messages
+
+### Games
+
+All games are played via direct message. See [modules/games/README.md](modules/games/README.md) for complete documentation.
+
+**Available Games:**
+- DopeWars - Drug dealing simulation
+- Lemonade Stand - Business simulation
+- BlackJack - Card game
+- Video Poker - Poker game
+- Mastermind - Code breaking
+- Golf Sim - Golf simulation
+- Hangman - Word guessing
+- Ham Test - ARRL exam practice
+- Tic-Tac-Toe - Classic game
+- Battleship - Naval combat
+- Quiz - Group quiz system
+
+**Commands:**
+- `games` - List available games
+- `blackjack` - Start blackjack (DM only)
+- `q: join` - Join group quiz
+- `q: start` - Start quiz (admin only)
+
+### Inventory and POS System
+
+Complete inventory management and point-of-sale system:
+
+**Commands:**
+- `itemlist` - List all items
+- `itemadd $name #price #quantity` - Add item
+- `itemsell $name #quantity` - Sell item
+- `itemloan $name #quantity @node` - Loan item
+- `itemreturn $name` - Return loaned item
+- `cartadd $name #quantity` - Add to cart
+- `cartbuy` - Purchase cart contents
+- `itemstats` - Sales statistics
+
+**Configuration:**
+```ini
+[inventory]
+enabled = True
+inventory_db = data/inventory.db
+disable_penny = False                    # Allow penny transactions
+```
+
+### Checklist System
+
+Check-in/check-out system for people and equipment:
+
+**Commands:**
+- `checkin $description` - Check in
+- `checkout $description` - Check out
+- `checklist` - View checklist
+- `approvecl #` - Approve check-in (admin)
+- `denycl #` - Deny check-in (admin)
+
+**Configuration:**
+```ini
+[checklist]
+enabled = True
+checklist_db = data/checklist.db
+```
+
+---
+
+## Module System
+
+The bot uses a modular architecture where features are implemented as separate Python modules in the `modules/` directory. Modules can be enabled/disabled via configuration.
+
+### Core Modules
+
+- **`system.py`**: Interface management, packet handling, telemetry, watchdog
+- **`settings.py`**: Configuration parsing and global settings
+- **`log.py`**: Logging infrastructure
+- **`bbstools.py`**: Bulletin Board System implementation
+- **`scheduler.py`**: Message scheduling system
+
+### Feature Modules
+
+- **`locationdata.py`**: Location services, weather, geolocation
+- **`space.py`**: Solar conditions, satellite passes
+- **`llm.py`**: LLM/AI integration (Ollama, OpenWebUI)
+- **`wiki.py`**: Wikipedia/Kiwix search
+- **`rss.py`**: RSS feed parsing
+- **`radio.py`**: Radio monitoring (Hamlib, WSJT-X, JS8Call, VOX, TTS)
+- **`smtp.py`**: Email/SMS integration
+- **`inventory.py`**: Inventory and POS system
+- **`checklist.py`**: Check-in/check-out system
+- **`qrz.py`**: QRZ.com integration
+- **`dxspot.py`**: DX cluster spotting
+- **`survey.py`**: Survey system
+- **`globalalert.py`**: Emergency alerts (international)
+- **`filemon.py`**: File monitoring
+- **`web_ui.py`**: Web dashboard
+- **`mcp_server.py`**: MCP API server
+
+### Game Modules
+
+All games are in `modules/games/`. See [modules/games/README.md](modules/games/README.md).
+
+### Adding New Modules
+
+See [modules/adding_more.md](modules/adding_more.md) for developer documentation on creating new modules.
+
+---
+
+## Multi-Interface Support
+
+The bot supports up to 9 simultaneous Meshtastic interfaces, allowing you to:
+- Monitor multiple mesh networks
+- Bridge between networks
+- Use different channels per interface
+- Aggregate telemetry from all interfaces
+
+### Interface Types
+
+1. **Serial (USB)**: Direct connection to Meshtastic device
+   ```ini
+   [interface]
+   type = serial
+   port = /dev/ttyACM0
+   ```
+
+2. **TCP (Network)**: Connect to meshtasticd or remote node
+   ```ini
+   [interface2]
+   type = tcp
+   hostname = 192.168.1.100:4403
+   ```
+
+3. **BLE (Bluetooth)**: Bluetooth Low Energy connection
+   ```ini
+   [interface3]
+   type = ble
+   mac = AA:BB:CC:DD:EE:FF
+   ```
+   **Note**: Only one BLE interface is allowed.
+
+### Interface Management
+
+- **Automatic Reconnection**: Watchdog monitors interfaces and automatically reconnects on failure
+- **Independent Channels**: Each interface can use different channels
+- **Unified Node Database**: All interfaces share node information
+- **Cross-Interface Messaging**: Send messages between interfaces
+
+### Watchdog System
+
+The watchdog (`watchdog()`) runs every 20 seconds and:
+- Checks interface connectivity
+- Monitors telemetry
+- Handles sentry/proximity alerts
+- Manages multi-ping requests
+- Performs memory cleanup
+- Attempts reconnection on failure
+
+---
+
+## Web UI Dashboard
+
+A comprehensive web-based dashboard for monitoring and configuring the bot.
+
+### Access
+
+By default, the Web UI runs on `http://0.0.0.0:8420`. Access it from any device on your network:
+- Local: `http://localhost:8420`
+- Network: `http://your-bot-ip:8420`
+
+### Features
+
+#### Dashboard Tab
+- Real-time node list with status
+- RF telemetry overview
+- Recent activity feed
+- System health indicators
+
+#### Node Map Tab
+- Interactive map (OpenStreetMap or Google Maps)
+- Node locations with position trails
+- Click nodes for details
+- Configurable map provider
+
+#### BBS Tab
+- Browse public BBS messages
+- View pending direct messages
+- Post new messages
+- Delete messages (admin)
+
+#### RF Telemetry Tab
+- Packet statistics per interface
+- TX/RX counts
+- Error rates
+- SNR/RSSI metrics
+- Channel utilization
+
+#### Configuration Tab
+- Edit all bot settings
+- User-friendly labels and descriptions
+- Grouped by category
+- Collapsible sections
+- Automatic backup on save
+- Real-time validation
+
+#### Activity Feed Tab
+- Recent commands executed
+- Message history
+- Node join/leave events
+- System events
+
+#### Node Details Tab
+- Detailed information per node
+- Position history
+- Device metrics
+- Message statistics
+
+#### Statistics Tab
+- Charts and graphs
+- Network growth over time
+- Message volume
+- Node activity patterns
+
+#### System Health Tab
+- CPU and memory usage
+- Interface status
+- Error logs
+- Performance metrics
+
+#### Network Graph Tab
+- Visual network topology
+- Node connections
+- Routing paths
+- Signal strength visualization
+
+#### Alert Center Tab
+- Active alerts
+- Alert history
+- Alert configuration
+
+#### Export/Download Tab
+- Export node data (CSV/JSON)
+- Download logs
+- Backup configuration
+
+#### Message Composer Tab
+- Send messages to nodes
+- Broadcast to channels
+- Message templates
+
+#### Node Management Tab
+- Ban/unban nodes
+- Admin management
+- Node information editing
+
+#### Position History Tab
+- Node movement trails
+- Position timeline
+- Geographic analysis
+
+### Configuration
+
+```ini
+[web_ui]
+enabled = True
+host = 0.0.0.0                      # Listen on all interfaces
+port = 8420
+# Optional: Google Maps API key for map provider
+google_maps_api_key = 
+```
+
+**Disable Web UI:**
+```ini
+[web_ui]
+enabled = False
+```
+
+### Data Access
+
+The Web UI directly accesses the bot's in-memory data structures (not via MCP API), ensuring real-time data without polling delays.
+
+---
+
+## MCP Server API
+
+A RESTful API server providing read-only access to bot telemetry and node data.
+
+### Access
+
+By default, the MCP Server runs on `http://0.0.0.0:8421`.
+
+### Endpoints
+
+#### `/api` or `/`
+Returns API information and available endpoints.
+
+#### `/api/nodes`
+Get all nodes from all interfaces.
+```json
+{
+  "interface_1": {
+    "interfaceNumber": 1,
+    "nodeCount": 5,
+    "nodes": [...]
+  }
+}
+```
+
+#### `/api/nodes/<interface>`
+Get nodes from specific interface (1-9).
+
+#### `/api/telemetry`
+Get RF telemetry from all interfaces.
+```json
+{
+  "interface_1": {
+    "tx": 1234,
+    "rx": 5678,
+    "errors": 0,
+    "snr": 12.5,
+    "rssi": -80
+  }
+}
+```
+
+#### `/api/telemetry/<interface>`
+Get telemetry from specific interface.
+
+#### `/api/position`
+Get position metadata for all nodes.
+
+#### `/api/leaderboard`
+Get mesh leaderboard data (extreme metrics).
+
+### CORS
+
+The API has CORS enabled, allowing access from web applications and other services.
+
+### Configuration
+
+```ini
+[mcp_server]
+enabled = True
+host = 0.0.0.0                      # Listen on all interfaces
+port = 8421
+```
+
+**Disable MCP Server:**
+```ini
+[mcp_server]
+enabled = False
+```
+
+---
+
+## Troubleshooting
+
+### Bot Won't Start
+
+1. **Check interface connection:**
+   ```sh
+   ls -l /dev/ttyACM*  # List serial devices
+   ```
+
+2. **Check permissions:**
+   ```sh
+   sudo usermod -a -G dialout $USER  # Add user to dialout group
+   sudo usermod -a -G bluetooth $USER  # Add user to bluetooth group (for BLE)
+   ```
+
+3. **Check logs:**
+   ```sh
+   tail -f logs/mesh_bot.log
+   ```
+
+4. **Verify configuration:**
+   ```sh
+   python3 -c "import configparser; c = configparser.ConfigParser(); c.read('config.ini'); print(c.sections())"
+   ```
+
+### Interface Disconnection
+
+The watchdog automatically attempts to reconnect. If reconnection fails:
+- Check physical connection
+- Verify device is powered
+- Check for other processes using the device: `lsof /dev/ttyACM0`
+- Review logs for error messages
+
+### Messages Not Received
+
+1. **Check channel configuration:** Verify `defaultChannel` matches your device
+2. **Check DM mode:** If `respond_by_dm_only = True`, bot only responds to DMs
+3. **Check anti-spam:** Bot may be throttling responses
+4. **Verify command is in trap_list:** Check logs for "Bot detected Commands"
+
+### Web UI Not Accessible
+
+1. **Check if enabled:**
+   ```ini
+   [web_ui]
+   enabled = True
+   ```
+
+2. **Check firewall:**
+   ```sh
+   sudo ufw allow 8420/tcp
+   ```
+
+3. **Check if running:** Look for "Web UI started" in logs
+4. **Try different port:** Change `port` in `[web_ui]` section
+
+### Performance Issues
+
+1. **Reduce logging level:**
+   ```ini
+   [general]
+   sysloglevel = INFO  # Instead of DEBUG
+   ```
+
+2. **Disable unused modules:** Turn off features you don't use
+3. **Check system resources:**
+   ```sh
+   top
+   htop
+   ```
+
+4. **Review watchdog frequency:** Watchdog runs every 20 seconds by default
+
+### Common Configuration Errors
+
+- **Missing required sections:** Copy from `config.template`
+- **Invalid interface type:** Must be `serial`, `tcp`, or `ble`
+- **Port already in use:** Change port numbers for web_ui or mcp_server
+- **Invalid node IDs:** Node IDs must be numeric
+
+---
+
+## Development
+
+### Project Structure
+
+```
+meshing-around/
+├── mesh_bot.py              # Main entry point
+├── pong_bot.py              # Minimal bot example
+├── config.template          # Configuration template
+├── requirements.txt         # Python dependencies
+├── install.sh              # Installation script
+├── launch.sh               # Launch script (venv)
+├── modules/                # Feature modules
+│   ├── system.py           # Core system functions
+│   ├── settings.py         # Configuration management
+│   ├── log.py              # Logging
+│   ├── web_ui.py           # Web dashboard
+│   ├── mcp_server.py       # API server
+│   └── games/              # Game modules
+├── script/                 # Utility scripts
+│   ├── addFav.py          # Add favorite nodes
+│   └── docker/            # Docker configuration
+├── data/                   # Data files
+│   ├── bbsdb.pkl          # BBS database
+│   └── survey/            # Survey definitions
+├── logs/                   # Log files
+└── etc/                    # Additional files
+```
+
+### Adding New Commands
+
+1. **Add command to trap_list** in `modules/system.py`:
+   ```python
+   trap_list_mycommand = ("mycommand",)
+   trap_list = trap_list + trap_list_mycommand
+   ```
+
+2. **Add handler function** in `mesh_bot.py`:
+   ```python
+   def handle_mycommand(message, message_from_id, deviceID, isDM):
+       return "Response message"
+   ```
+
+3. **Add to command dictionary** in `auto_response()`:
+   ```python
+   "mycommand": lambda: handle_mycommand(message, message_from_id, deviceID, isDM),
+   ```
+
+### Testing
+
+```sh
+# Run with debug logging
+python3 mesh_bot.py
+
+# Test specific module
+python3 -c "from modules import bbstools; print(bbstools.bbs_help())"
+```
+
+### Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+---
+
+## Recognition
 
 I used ideas and snippets from other responder bots and want to call them out!
 
@@ -189,7 +1112,7 @@ For testing and feature ideas on Discord and GitHub, if its stable its thanks to
 - **mrpatrick1991**: For OG Docker configurations. 💻
 - **A-c0rN**: Assistance with iPAWS and 🚨
 - **Mike O'Connell/skrrt**: For [eas_alert_parser](etc/eas_alert_parser.py) enhanced by **sheer.cold**
-- **dadud**: For idea on [etc/icad_tone.py](etc/icad_tone.py)
+- **dadud**: For vibe coding the Web UI dashboard and MCP Server API, and idea on [etc/icad_tone.py](etc/icad_tone.py) 🎨
 - **WH6GXZ nurse dude**: Volcano Alerts 🌋
 - **mikecarper**: hamtest, leading to quiz etc.. 📋
 - **c.merphy360**: high altitude alerts. 🚀
@@ -199,5 +1122,7 @@ For testing and feature ideas on Discord and GitHub, if its stable its thanks to
 
 ### Tools
 - **Node Backup Management**: [Node Slurper](https://github.com/SpudGunMan/node-slurper)
+
+---
 
 Meshtastic® is a registered trademark of Meshtastic LLC. Meshtastic software components are released under various licenses, see GitHub for details. No warranty is provided - use at your own risk.
