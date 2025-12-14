@@ -911,7 +911,7 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             
             try:
-            if path_parts[0] == 'api' and len(path_parts) > 1:
+                if path_parts[0] == 'api' and len(path_parts) > 1:
                 content_length = int(self.headers.get('Content-Length', 0))
                 post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
                 request_data = json.loads(post_data.decode('utf-8')) if post_data else {}
