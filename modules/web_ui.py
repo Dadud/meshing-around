@@ -3866,6 +3866,11 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
         raise Exception(f"Failed to create Web UI server on {host}:{port}")
     
     if background:
+        # Store server reference globally to prevent garbage collection
+        if not hasattr(start_web_ui, '_server_instances'):
+            start_web_ui._server_instances = []
+        start_web_ui._server_instances.append(server)
+        
         def run_server():
             """Run server with error handling to prevent silent crashes."""
             try:
@@ -3875,17 +3880,18 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
                 print(f"Web UI: Server crashed: {e}", file=sys.stderr)
                 import traceback
                 traceback.print_exc(file=sys.stderr)
-                # Try to restart the server
-                try:
-                    time.sleep(2)
-                    print(f"Web UI: Attempting to restart server...", file=sys.stderr)
-                    start_web_ui(host, port, background=True)
-                except Exception as restart_error:
-                    print(f"Web UI: Failed to restart: {restart_error}", file=sys.stderr)
+                # Don't try to restart automatically - let the main bot handle it
+                # to avoid infinite recursion and multiple server instances
         
-        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread = threading.Thread(target=run_server, daemon=True, name=f"WebUI-{port}")
         server_thread.start()
         print(f"Web UI started in background at http://{host}:{port}")
+        
+        # Store thread reference
+        if not hasattr(start_web_ui, '_server_threads'):
+            start_web_ui._server_threads = []
+        start_web_ui._server_threads.append(server_thread)
+        
         return server_thread
     else:
         print(f"Web UI started at http://{host}:{port}")

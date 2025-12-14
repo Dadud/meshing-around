@@ -1707,10 +1707,13 @@ def handle_boot(mesh=True):
         if my_settings.web_ui_enabled:
             try:
                 from modules.web_ui import start_web_ui
-                start_web_ui(host=my_settings.web_ui_host, port=my_settings.web_ui_port, background=True)
-                logger.info(f"System: Web UI started on http://{my_settings.web_ui_host}:{my_settings.web_ui_port}")
+                server_thread = start_web_ui(host=my_settings.web_ui_host, port=my_settings.web_ui_port, background=True)
+                if server_thread and server_thread.is_alive():
+                    logger.info(f"System: Web UI started on http://{my_settings.web_ui_host}:{my_settings.web_ui_port}")
+                else:
+                    logger.error(f"System: Web UI thread failed to start")
             except Exception as e:
-                logger.warning(f"System: Failed to start Web UI: {e}")
+                logger.error(f"System: Failed to start Web UI: {e}", exc_info=True)
         
         if mesh:
             
