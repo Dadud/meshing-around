@@ -2125,6 +2125,95 @@ def get_web_ui_html() -> str:
             }
         }
         
+        async function loadAutoUpdateSettings() {
+            const content = document.getElementById('auto-update-settings');
+            if (!content) return;
+            
+            try {
+                // Get current settings
+                const response = await fetch(`${API_BASE}/api/update-settings`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    content.innerHTML = `<div class="error">Error loading settings: ${data.error}</div>`;
+                    return;
+                }
+                
+                const enabled = data.enabled || false;
+                const interval = data.interval || 5;
+                
+                let html = '<div class="form-group">';
+                html += '<label style="display: flex; align-items: center; cursor: pointer; margin-bottom: 16px;">';
+                html += `<input type="checkbox" id="auto-update-enabled" ${enabled ? 'checked' : ''} style="width: 20px; height: 20px; margin-right: 10px;" onchange="updateAutoUpdateSettings()">`;
+                html += '<span style="font-weight: 500; font-size: 16px;">Enable Auto-Update</span>';
+                html += '</label>';
+                html += '<small style="display: block; color: #6b7280; margin-top: 4px; margin-left: 30px;">Automatically check for and apply updates from the repository</small>';
+                html += '</div>';
+                
+                html += '<div class="form-group" style="margin-top: 20px;">';
+                html += '<label for="auto-update-interval">Update Check Interval (seconds)</label>';
+                html += `<input type="number" id="auto-update-interval" value="${interval}" min="1" max="60" style="width: 100px; margin-top: 8px;" onchange="updateAutoUpdateSettings()">`;
+                html += '<small style="display: block; color: #6b7280; margin-top: 4px;">How often to check for updates (1-60 seconds). Default: 5 seconds.</small>';
+                html += '</div>';
+                
+                html += '<div class="form-group" style="margin-top: 16px; padding: 12px; background: #f3f4f6; border-radius: 6px;">';
+                html += '<small style="color: #6b7280;">';
+                html += '<strong>Note:</strong> Auto-update is disabled by default for safety. Enable it only if you trust the repository and want automatic updates.';
+                html += '</small>';
+                html += '</div>';
+                
+                content.innerHTML = html;
+            } catch (error) {
+                content.innerHTML = `<div class="error">Error loading auto-update settings: ${error.message}</div>`;
+            }
+        }
+        
+        async function updateAutoUpdateSettings() {
+            const enabled = document.getElementById('auto-update-enabled').checked;
+            const interval = parseInt(document.getElementById('auto-update-interval').value) || 5;
+            
+            // Clamp interval between 1 and 60
+            const clampedInterval = Math.max(1, Math.min(60, interval));
+            if (clampedInterval !== interval) {
+                document.getElementById('auto-update-interval').value = clampedInterval;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/update-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        enabled: enabled,
+                        interval: clampedInterval
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Show success message briefly
+                    const content = document.getElementById('auto-update-settings');
+                    const successMsg = document.createElement('div');
+                    successMsg.style.cssText = 'background: #d1fae5; color: #065f46; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 14px;';
+                    successMsg.textContent = '✅ Settings saved';
+                    content.insertBefore(successMsg, content.firstChild);
+                    setTimeout(() => successMsg.remove(), 3000);
+                } else {
+                    alert(`Error saving settings: ${data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`Error saving settings: ${error.message}`);
+            }
+        }
+        
         async function loadChangelog() {
             const content = document.getElementById('changelog-content');
             if (!content) return;
