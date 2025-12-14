@@ -337,6 +337,53 @@ def get_leaderboard() -> Dict[str, Any]:
     return result
 
 
+def get_bbs_messages() -> Dict[str, Any]:
+    """Get BBS messages from bbstools module."""
+    try:
+        from modules import bbstools
+        
+        # Access the global bbs_messages list
+        bbs_messages = getattr(bbstools, 'bbs_messages', [])
+        bbs_dm = getattr(bbstools, 'bbs_dm', [])
+        
+        # Format: [messageID, subject, message, fromNode, timestamp, threadID, replytoID]
+        messages = []
+        for msg in bbs_messages:
+            if len(msg) >= 4:
+                messages.append({
+                    "id": msg[0] if len(msg) > 0 else 0,
+                    "subject": msg[1] if len(msg) > 1 else "",
+                    "message": msg[2] if len(msg) > 2 else "",
+                    "fromNode": msg[3] if len(msg) > 3 else 0,
+                    "timestamp": msg[4] if len(msg) > 4 else "",
+                    "threadID": msg[5] if len(msg) > 5 else 0,
+                    "replytoID": msg[6] if len(msg) > 6 else 0
+                })
+        
+        # Format DMs: [toNode, message, fromNode] or similar
+        dms = []
+        for dm in bbs_dm:
+            if len(dm) >= 3:
+                dms.append({
+                    "toNode": dm[0] if len(dm) > 0 else 0,
+                    "message": dm[1] if len(dm) > 1 else "",
+                    "fromNode": dm[2] if len(dm) > 2 else 0
+                })
+        
+        return {
+            "success": True,
+            "messages": messages,
+            "dms": dms,
+            "messageCount": len(messages),
+            "dmCount": len(dms)
+        }
+    except Exception as e:
+        return {
+            "error": f"Failed to get BBS messages: {str(e)}",
+            "type": type(e).__name__
+        }
+
+
 class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP request handler for Web UI."""
     
@@ -404,6 +451,16 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                     elif path_parts[1] == 'leaderboard':
                         # Get leaderboard directly from meshLeaderboard
                         response = get_leaderboard()
+                    elif path_parts[1] == 'bbs':
+                        # Get BBS messages
+                        response = get_bbs_messages()
+                    elif path_parts[1] == 'map':
+                        # Get nodes with positions for map
+                        nodes = get_node_data()
+                        response = {
+                            "success": True,
+                            "nodes": nodes
+                        }
                     else:
                         response = {"error": "Unknown API endpoint"}
                 else:
@@ -639,7 +696,57 @@ def get_web_ui_html() -> str:
         .badge.warning { background: #f59e0b; color: white; }
         .badge.danger { background: #ef4444; color: white; }
         .badge.info { background: #3b82f6; color: white; }
+        /* Map Styles */
+        #map-container {
+            width: 100%;
+            height: 600px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        #node-map {
+            width: 100%;
+            height: 100%;
+        }
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        /* BBS Styles */
+        .bbs-message {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            border-left: 4px solid #667eea;
+        }
+        .bbs-message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #667eea;
+        }
+        .bbs-message-body {
+            color: #374151;
+            margin-top: 8px;
+            white-space: pre-wrap;
+        }
+        .bbs-message-meta {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 8px;
+        }
     </style>
+    <!-- Leaflet CSS for OpenStreetMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
     <div class="container">
@@ -649,11 +756,13 @@ def get_web_ui_html() -> str:
         </header>
         
         <div class="tabs">
-            <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
-            <button class="tab" onclick="showTab('config')">Configuration</button>
-            <button class="tab" onclick="showTab('nodes')">Nodes</button>
-            <button class="tab" onclick="showTab('telemetry')">RF Telemetry</button>
-            <button class="tab" onclick="showTab('leaderboard')">Leaderboard</button>
+            <button class="tab active" onclick="showTab('dashboard')">📊 Dashboard</button>
+            <button class="tab" onclick="showTab('map')">🗺️ Node Map</button>
+            <button class="tab" onclick="showTab('bbs')">💬 BBS</button>
+            <button class="tab" onclick="showTab('nodes')">📡 Nodes</button>
+            <button class="tab" onclick="showTab('telemetry')">📈 RF Telemetry</button>
+            <button class="tab" onclick="showTab('leaderboard')">🏆 Leaderboard</button>
+            <button class="tab" onclick="showTab('config')">⚙️ Configuration</button>
         </div>
         
         <div class="content">
@@ -685,13 +794,33 @@ def get_web_ui_html() -> str:
                 <h2>Mesh Leaderboard</h2>
                 <div id="leaderboard-content" class="loading">Loading leaderboard...</div>
             </div>
+            
+            <div id="map" class="tab-content">
+                <h2>Node Location Map</h2>
+                <div id="map-container" style="position: relative;">
+                    <div id="node-map"></div>
+                </div>
+                <p style="color: #6b7280; margin-top: 10px;">
+                    Shows nodes with position data from the mesh network. Nodes are updated as packets are received.
+                </p>
+            </div>
+            
+            <div id="bbs" class="tab-content">
+                <h2>Bulletin Board System (BBS)</h2>
+                <div id="bbs-content" class="loading">Loading BBS messages...</div>
+            </div>
         </div>
     </div>
+    
+    <!-- Leaflet JS for OpenStreetMap -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
         const API_BASE = window.location.origin;
         let configData = {};
         let autoRefreshInterval = null;
+        let map = null;
+        let mapMarkers = [];
         
         function showTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -701,6 +830,10 @@ def get_web_ui_html() -> str:
             
             if (tabName === 'config') {
                 loadConfig();
+            } else if (tabName === 'map') {
+                initMap();
+            } else if (tabName === 'bbs') {
+                loadBBS();
             } else {
                 refreshData();
             }
@@ -996,12 +1129,191 @@ def get_web_ui_html() -> str:
             content.innerHTML = html || '<p>No leaderboard data available</p>';
         }
         
+        // Map Functions
+        function initMap() {
+            // Wait a bit for the tab to be visible
+            setTimeout(() => {
+                if (map && typeof map.remove === 'function') {
+                    map.remove();
+                }
+                
+                // Check if map container exists
+                const mapContainer = document.getElementById('node-map');
+                if (!mapContainer) {
+                    console.error('Map container not found');
+                    return;
+                }
+                
+                // Initialize map centered on a default location (will adjust to nodes)
+                try {
+                    map = L.map('node-map').setView([37.7749, -122.4194], 10);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors',
+                        maxZoom: 19
+                    }).addTo(map);
+                    
+                    mapMarkers = [];
+                    loadMapNodes();
+                } catch (e) {
+                    console.error('Error initializing map:', e);
+                    document.getElementById('map-container').innerHTML = 
+                        '<div style="padding: 40px; text-align: center; color: #6b7280;"><h3>Map Error</h3><p>Could not initialize map. Please refresh the page.</p></div>';
+                }
+            }, 100);
+        }
+        
+        async function loadMapNodes() {
+            if (!map) return;
+            
+            const data = await fetchAPI('map');
+            if (data.error || !data.nodes) {
+                console.error('Error loading nodes for map:', data.error);
+                return;
+            }
+            
+            // Clear existing markers
+            mapMarkers.forEach(marker => map.removeLayer(marker));
+            mapMarkers = [];
+            
+            let hasPositions = false;
+            const bounds = [];
+            
+            for (const key in data.nodes) {
+                if (data.nodes[key].nodes) {
+                    data.nodes[key].nodes.forEach(node => {
+                        if (node.position && node.position.latitude && node.position.longitude) {
+                            hasPositions = true;
+                            const lat = node.position.latitude;
+                            const lng = node.position.longitude;
+                            const name = node.shortName || node.longName || `Node ${node.nodeId}`;
+                            
+                            // Create marker with different color for local node
+                            const markerColor = node.isLocal ? 'green' : 'blue';
+                            const marker = L.marker([lat, lng], {
+                                icon: L.divIcon({
+                                    className: 'custom-marker',
+                                    html: `<div style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+                                    iconSize: [20, 20]
+                                })
+                            })
+                            .bindPopup(`
+                                <strong>${name}</strong><br>
+                                Node ID: ${node.nodeIdHex || node.nodeId}<br>
+                                SNR: ${node.snr || 'N/A'}<br>
+                                RSSI: ${node.rssi || 'N/A'}<br>
+                                ${node.isLocal ? '<span style="color: green;">Local Node</span>' : ''}
+                            `)
+                            .addTo(map);
+                            
+                            mapMarkers.push(marker);
+                            bounds.push([lat, lng]);
+                        }
+                    });
+                }
+            }
+            
+            if (hasPositions && bounds.length > 0) {
+                try {
+                    map.fitBounds(bounds, { padding: [20, 20] });
+                } catch (e) {
+                    console.error('Error fitting bounds:', e);
+                }
+            } else {
+                // Show message if no positions - but don't overlay on map
+                const mapContainer = document.getElementById('map-container');
+                if (mapContainer) {
+                    const existingMsg = mapContainer.querySelector('.no-positions');
+                    if (!existingMsg) {
+                        const msg = document.createElement('div');
+                        msg.className = 'no-positions';
+                        msg.style.cssText = 'padding: 40px; text-align: center; color: #6b7280; background: rgba(255,255,255,0.9); border-radius: 8px; margin: 20px;';
+                        msg.innerHTML = '<h3>No Node Positions Available</h3><p>Nodes need to have position data to appear on the map.</p><p>Position data comes from packets received from nodes.</p>';
+                        mapContainer.appendChild(msg);
+                    }
+                }
+            }
+        }
+        
+        // BBS Functions
+        async function loadBBS() {
+            const content = document.getElementById('bbs-content');
+            const data = await fetchAPI('bbs');
+            
+            if (data.error) {
+                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let html = '';
+            
+            // Show stats
+            html += `<div class="card" style="margin-bottom: 20px;">
+                <h3>BBS Statistics</h3>
+                <div class="stat">
+                    <span>Public Messages</span>
+                    <span><strong>${data.messageCount || 0}</strong></span>
+                </div>
+                <div class="stat">
+                    <span>Pending DMs</span>
+                    <span><strong>${data.dmCount || 0}</strong></span>
+                </div>
+            </div>`;
+            
+            // Show messages
+            if (data.messages && data.messages.length > 0) {
+                html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Public Messages</h3>';
+                data.messages.forEach(msg => {
+                    const fromNodeName = msg.fromNode ? `Node ${msg.fromNode}` : 'Unknown';
+                    html += `
+                        <div class="bbs-message">
+                            <div class="bbs-message-header">
+                                <span>#${msg.id} - ${msg.subject || 'No Subject'}</span>
+                                <span>${fromNodeName}</span>
+                            </div>
+                            <div class="bbs-message-body">${msg.message || ''}</div>
+                            <div class="bbs-message-meta">
+                                ${msg.timestamp || 'No timestamp'} | 
+                                ${msg.threadID ? `Thread: ${msg.threadID}` : ''}
+                                ${msg.replytoID ? ` | Reply to: #${msg.replytoID}` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                html += '<p>No BBS messages found.</p>';
+            }
+            
+            // Show pending DMs
+            if (data.dms && data.dms.length > 0) {
+                html += '<h3 style="margin-top: 24px; margin-bottom: 12px;">Pending Direct Messages</h3>';
+                data.dms.forEach(dm => {
+                    html += `
+                        <div class="bbs-message" style="border-left-color: #f59e0b;">
+                            <div class="bbs-message-header">
+                                <span>DM to Node ${dm.toNode}</span>
+                                <span>From Node ${dm.fromNode}</span>
+                            </div>
+                            <div class="bbs-message-body">${dm.message || ''}</div>
+                        </div>
+                    `;
+                });
+            }
+            
+            content.innerHTML = html;
+        }
+        
         // Auto-refresh dashboard every 10 seconds
         function startAutoRefresh() {
             stopAutoRefresh();
             autoRefreshInterval = setInterval(() => {
                 const activeTab = document.querySelector('.tab-content.active').id;
-                if (activeTab !== 'config') {
+                if (activeTab === 'config') {
+                    // Don't auto-refresh config
+                } else if (activeTab === 'map') {
+                    loadMapNodes();
+                } else if (activeTab === 'bbs') {
+                    loadBBS();
+                } else {
                     refreshData();
                 }
             }, 10000);
