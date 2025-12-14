@@ -3702,83 +3702,35 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
     Returns:
         Server instance or thread depending on background parameter
     """
-    # Try to start server with automatic port recovery
-    max_retries = 3
-    retry_delay = 2
-    server = None
-    
-    for attempt in range(max_retries):
-        try:
-            server = socketserver.TCPServer((host, port), WebUIRequestHandler)
-            server.allow_reuse_address = True
-            break  # Success, exit retry loop
-        except OSError as e:
-            if "Address already in use" in str(e) or "errno 98" in str(e).lower():
-                if attempt < max_retries - 1:
-                    # Try to automatically free the port
-                    try:
-                        from modules.settings import auto_kill_port_lock
-                    except:
-                        auto_kill_port_lock = True  # Default to enabled
-                    
-                    if auto_kill_port_lock:
-                        freed, message = free_locked_tcp_port(port, auto_kill_port_lock)
-                        if freed:
-                            print(f"Web UI: {message}")
-                            time.sleep(2)  # Wait longer for port to be fully released
-                            continue  # Retry immediately
-                        else:
-                            print(f"Web UI: Port {port} is in use. {message}")
-                            # Try one more time with a longer wait
-                            if attempt < max_retries - 1:
-                                print(f"Web UI: Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...")
-                                time.sleep(retry_delay)
-                                retry_delay += 1
-                                # Try to free the port again
-                                freed, message = free_locked_tcp_port(port, auto_kill_port_lock)
-                                if freed:
-                                    print(f"Web UI: Port freed on retry: {message}")
-                                    time.sleep(2)
-                                    continue
-                    else:
-                        print(f"Web UI: Port {port} is in use. Auto-kill disabled.")
-                        print(f"Web UI: Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...")
-                        time.sleep(retry_delay)
-                        retry_delay += 1
-                else:
-                    # Final attempt failed - provide helpful error message
-                    import subprocess
-                    try:
-                        # Try to identify what's using the port
-                        lsof_result = subprocess.run(
-                            ["lsof", "-i", f":{port}"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5
-                        )
-                        port_info = lsof_result.stdout if lsof_result.returncode == 0 else "Unable to identify process"
-                    except:
-                        port_info = "Unable to identify process (lsof not available)"
-                    
-                    error_msg = (
-                        f"Failed to start Web UI on port {port} after {max_retries} attempts.\n"
-                        f"Port is in use. To fix this:\n"
-                        f"1. Check what's using the port: sudo lsof -i :{port} or sudo fuser {port}/tcp\n"
-                        f"2. Kill the process: sudo kill -9 <PID> (replace <PID> with the process ID)\n"
-                        f"3. Or disable auto-kill and manually free the port\n"
-                        f"Current port status:\n{port_info}"
-                    )
-                    raise Exception(error_msg)
-            else:
-                # Different error, re-raise it
-                raise
-        except Exception as e:
-            # Any other exception during server creation
+    # Simple startup - no port recovery
+    try:
+        server = socketserver.TCPServer((host, port), WebUIRequestHandler)
+        server.allow_reuse_address = True
+    except OSError as e:
+        if "Address already in use" in str(e) or "errno 98" in str(e).lower():
+            import subprocess
+            try:
+                # Try to identify what's using the port
+                lsof_result = subprocess.run(
+                    ["lsof", "-i", f":{port}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                port_info = lsof_result.stdout if lsof_result.returncode == 0 else "Unable to identify process"
+            except:
+                port_info = "Unable to identify process (lsof not available)"
+            
+            error_msg = (
+                f"Failed to start Web UI on port {port}.\n"
+                f"Port is in use. To fix this:\n"
+                f"1. Check what's using the port: sudo lsof -i :{port} or sudo fuser {port}/tcp\n"
+                f"2. Kill the process: sudo kill -9 <PID> (replace <PID> with the process ID)\n"
+                f"Current port status:\n{port_info}"
+            )
+            raise Exception(error_msg)
+        else:
             raise Exception(f"Failed to start Web UI server: {str(e)}")
-    
-    # Ensure server was created successfully
-    if server is None:
-        raise Exception(f"Failed to create Web UI server on {host}:{port}")
     
     if background:
         # Store server reference globally to prevent garbage collection
