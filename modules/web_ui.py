@@ -1644,6 +1644,7 @@ def get_web_ui_html() -> str:
         let autoRefreshInterval = null;
         let map = null;
         let mapMarkers = [];
+        let mapInitialized = false; // Track if map has been initialized (to preserve zoom on updates)
         
         async function fetchAPI(endpoint, method='GET', data=null) {
             try {
