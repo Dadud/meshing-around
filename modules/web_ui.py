@@ -1010,7 +1010,9 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
             else:
                 # Unknown path
+                self.send_response(404)
                 self.send_header('Content-Type', 'text/html')
+                self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.send_error(404, "Not Found")
                 return
