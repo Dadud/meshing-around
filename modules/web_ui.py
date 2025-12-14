@@ -76,15 +76,260 @@ def write_config(config_data: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def get_mcp_api_data(endpoint: str) -> Dict[str, Any]:
-    """Fetch data from MCP server API."""
-    try:
-        import urllib.request
-        url = f"http://127.0.0.1:8421/api/{endpoint}"
-        with urllib.request.urlopen(url, timeout=2) as response:
-            return json.loads(response.read().decode())
-    except Exception as e:
-        return {"error": f"Failed to fetch from MCP API: {str(e)}"}
+# Import data access functions from mcp_server
+# These access Meshtastic interfaces directly
+_system_module = None
+_globals_dict = None
+
+
+def get_system_globals():
+    """Lazy import of system module globals to avoid circular imports."""
+    global _system_module, _globals_dict
+    if _system_module is None:
+        import sys
+        # Try to get system module from already loaded modules
+        if 'modules.system' in sys.modules:
+            _system_module = sys.modules['modules.system']
+        else:
+            # Fallback: try to import
+            try:
+                from modules import system as _system_module
+            except ImportError:
+                pass
+        
+        # Get globals from main module (where interfaces are defined)
+        _globals_dict = None
+        if '__main__' in sys.modules:
+            _globals_dict = sys.modules['__main__'].__dict__
+        else:
+            try:
+                import __main__
+                _globals_dict = __main__.__dict__
+            except:
+                pass
+        
+        # If still None, try to get from calling frame
+        if _globals_dict is None:
+            try:
+                import inspect
+                frame = inspect.currentframe()
+                while frame:
+                    if 'interface1' in frame.f_globals:
+                        _globals_dict = frame.f_globals
+                        break
+                    frame = frame.f_back
+            except:
+                pass
+    return _system_module, _globals_dict
+
+
+def decimal_to_hex(decimal_number: int) -> str:
+    """Convert decimal node ID to hex format."""
+    return f"!{decimal_number:08x}"
+
+
+def get_node_data(interface_num: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Get node data directly from interface.nodes.
+    Returns data for all interfaces if interface_num is None, otherwise for specific interface.
+    """
+    system_module, globals_dict = get_system_globals()
+    if not system_module or not globals_dict:
+        return {"error": "System module not available"}
+    
+    result = {}
+    
+    # Determine which interfaces to query
+    if interface_num is not None:
+        interfaces_to_query = [interface_num]
+    else:
+        # Query all enabled interfaces (1-9)
+        interfaces_to_query = []
+        for i in range(1, 10):
+            if globals_dict.get(f'interface{i}') and globals_dict.get(f'interface{i}_enabled', True):
+                interfaces_to_query.append(i)
+    
+    for i in interfaces_to_query:
+        # Try to get interface from globals dict
+        interface = None
+        if globals_dict:
+            interface = globals_dict.get(f'interface{i}')
+        
+        # If not found, try to get from system module's globals
+        if not interface and system_module:
+            try:
+                interface = getattr(system_module, f'interface{i}', None)
+            except:
+                pass
+        
+        if not interface:
+            continue
+        
+        interface_key = f"interface_{i}"
+        nodes_data = []
+        
+        if hasattr(interface, 'nodes') and interface.nodes:
+            # Get my node number from globals or system module
+            my_node_num = 0
+            if globals_dict:
+                my_node_num = globals_dict.get(f'myNodeNum{i}', 0)
+            if my_node_num == 0 and system_module:
+                try:
+                    my_node_num = getattr(system_module, f'myNodeNum{i}', 0)
+                except:
+                    pass
+            
+            for node_hex, node_data in interface.nodes.items():
+                node_id = node_data.get('num', 0)
+                
+                # Get node name
+                node_name_short = ""
+                node_name_long = ""
+                if 'user' in node_data:
+                    node_name_short = node_data['user'].get('shortName', '')
+                    node_name_long = node_data['user'].get('longName', '')
+                
+                # Build node entry
+                node_entry = {
+                    "nodeId": node_id,
+                    "nodeIdHex": node_hex,
+                    "shortName": node_name_short,
+                    "longName": node_name_long,
+                    "snr": node_data.get('snr', 0),
+                    "rssi": node_data.get('rssi', 0),
+                    "lastHeard": node_data.get('lastHeard', 0),
+                    "isLocal": node_id == my_node_num
+                }
+                
+                # Add position data if available
+                if 'position' in node_data and node_data['position']:
+                    pos = node_data['position']
+                    node_entry["position"] = {
+                        "latitude": pos.get('latitude'),
+                        "longitude": pos.get('longitude'),
+                        "altitude": pos.get('altitude', 0),
+                        "time": pos.get('time', 0)
+                    }
+                
+                # Add device metrics if available
+                if 'deviceMetrics' in node_data and node_data['deviceMetrics']:
+                    metrics = node_data['deviceMetrics']
+                    node_entry["deviceMetrics"] = {
+                        "channelUtilization": metrics.get('channelUtilization', 0),
+                        "airUtilTx": metrics.get('airUtilTx', 0),
+                        "uptimeSeconds": metrics.get('uptimeSeconds', 0),
+                        "batteryLevel": metrics.get('batteryLevel', 0),
+                        "voltage": metrics.get('voltage', 0)
+                    }
+                
+                nodes_data.append(node_entry)
+        
+        result[interface_key] = {
+            "interfaceNumber": i,
+            "nodeCount": len(nodes_data),
+            "nodes": nodes_data
+        }
+    
+    return result
+
+
+def get_rf_telemetry(interface_num: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Get RF telemetry data directly from localTelemetryData.
+    Returns data for all interfaces if interface_num is None, otherwise for specific interface.
+    """
+    system_module, globals_dict = get_system_globals()
+    if not system_module or not globals_dict:
+        return {"error": "System module not available"}
+    
+    # Access localTelemetryData from system module
+    local_telemetry_data = getattr(system_module, 'localTelemetryData', {})
+    
+    result = {}
+    
+    # Determine which interfaces to query
+    if interface_num is not None:
+        interfaces_to_query = [interface_num]
+    else:
+        # Query all interfaces (1-9)
+        interfaces_to_query = list(range(1, 10))
+    
+    for i in interfaces_to_query:
+        if i in local_telemetry_data:
+            interface_key = f"interface_{i}"
+            telemetry = local_telemetry_data[i]
+            
+            result[interface_key] = {
+                "interfaceNumber": i,
+                "numPacketsTx": telemetry.get('numPacketsTx', 0),
+                "numPacketsRx": telemetry.get('numPacketsRx', 0),
+                "numPacketsTxErr": telemetry.get('numPacketsTxErr', 0),
+                "numPacketsRxErr": telemetry.get('numPacketsRxErr', 0),
+                "numOnlineNodes": telemetry.get('numOnlineNodes', 0),
+                "numTotalNodes": telemetry.get('numTotalNodes', 0),
+                "numRXDupes": telemetry.get('numRXDupes', 0),
+                "numTxRelays": telemetry.get('numTxRelays', 0),
+                "heapFreeBytes": telemetry.get('heapFreeBytes', 0),
+                "heapTotalBytes": telemetry.get('heapTotalBytes', 0)
+            }
+    
+    # Add timing data from interface 0
+    if 0 in local_telemetry_data:
+        result["timing"] = {}
+        timing_data = local_telemetry_data[0]
+        for key, value in timing_data.items():
+            if key.startswith('interface'):
+                result["timing"][key] = value
+    
+    return result
+
+
+def get_position_metadata() -> Dict[str, Any]:
+    """Get position metadata directly from positionMetadata."""
+    system_module, globals_dict = get_system_globals()
+    if not system_module or not globals_dict:
+        return {"error": "System module not available"}
+    
+    position_metadata = getattr(system_module, 'positionMetadata', {})
+    
+    # Convert to serializable format
+    result = {
+        "nodeCount": len(position_metadata),
+        "nodes": {}
+    }
+    
+    for node_id, metadata in position_metadata.items():
+        result["nodes"][str(node_id)] = dict(metadata) if isinstance(metadata, dict) else metadata
+    
+    return result
+
+
+def get_leaderboard() -> Dict[str, Any]:
+    """Get mesh leaderboard data directly from meshLeaderboard."""
+    system_module, globals_dict = get_system_globals()
+    if not system_module or not globals_dict:
+        return {"error": "System module not available"}
+    
+    mesh_leaderboard = getattr(system_module, 'meshLeaderboard', {})
+    
+    # Convert to serializable format, handling special structures
+    result = {}
+    
+    for key, value in mesh_leaderboard.items():
+        if isinstance(value, dict) and 'nodeID' in value:
+            # Leaderboard entry
+            result[key] = {
+                "nodeId": value.get('nodeID'),
+                "value": value.get('value'),
+                "timestamp": value.get('timestamp', 0)
+            }
+        elif isinstance(value, (list, dict)):
+            # Lists and dicts (like emojiCounts, nodeMessageCounts)
+            result[key] = value
+        else:
+            result[key] = value
+    
+    return result
 
 
 class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -118,10 +363,10 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                         config_data = read_config()
                         response = {"success": True, "config": config_data}
                     elif path_parts[1] == 'dashboard':
-                        # Get dashboard data from MCP server
-                        nodes = get_mcp_api_data('nodes')
-                        telemetry = get_mcp_api_data('telemetry')
-                        leaderboard = get_mcp_api_data('leaderboard')
+                        # Get dashboard data directly from Meshtastic interfaces
+                        nodes = get_node_data()
+                        telemetry = get_rf_telemetry()
+                        leaderboard = get_leaderboard()
                         response = {
                             "success": True,
                             "nodes": nodes,
@@ -129,11 +374,31 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             "leaderboard": leaderboard
                         }
                     elif path_parts[1] == 'nodes':
-                        response = get_mcp_api_data('nodes')
+                        # Get nodes directly from interface.nodes
+                        if len(path_parts) > 2 and path_parts[2].isdigit():
+                            interface_num = int(path_parts[2])
+                            if 1 <= interface_num <= 9:
+                                response = get_node_data(interface_num)
+                            else:
+                                response = {"error": "Interface number must be between 1 and 9"}
+                        else:
+                            response = get_node_data()
                     elif path_parts[1] == 'telemetry':
-                        response = get_mcp_api_data('telemetry')
+                        # Get RF telemetry directly from localTelemetryData
+                        if len(path_parts) > 2 and path_parts[2].isdigit():
+                            interface_num = int(path_parts[2])
+                            if 1 <= interface_num <= 9:
+                                response = get_rf_telemetry(interface_num)
+                            else:
+                                response = {"error": "Interface number must be between 1 and 9"}
+                        else:
+                            response = get_rf_telemetry()
+                    elif path_parts[1] == 'position':
+                        # Get position metadata directly from positionMetadata
+                        response = get_position_metadata()
                     elif path_parts[1] == 'leaderboard':
-                        response = get_mcp_api_data('leaderboard')
+                        # Get leaderboard directly from meshLeaderboard
+                        response = get_leaderboard()
                     else:
                         response = {"error": "Unknown API endpoint"}
                 else:
