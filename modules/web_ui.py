@@ -3705,6 +3705,11 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
         return False, "Auto-kill disabled"
     
     try:
+        # Get current process PID to avoid killing ourselves
+        import os
+        current_pid = os.getpid()
+        current_ppid = os.getppid()  # Parent process ID
+        
         # First, try to find and kill any existing Web UI server threads/processes
         # Check for processes listening on the port
         pids_to_kill = []
@@ -3719,7 +3724,9 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
             )
             
             if lsof_result.returncode == 0 and lsof_result.stdout.strip():
-                pids_to_kill.extend([int(pid.strip()) for pid in lsof_result.stdout.strip().split('\n') if pid.strip().isdigit()])
+                found_pids = [int(pid.strip()) for pid in lsof_result.stdout.strip().split('\n') if pid.strip().isdigit()]
+                # Filter out current process and parent process
+                pids_to_kill.extend([pid for pid in found_pids if pid != current_pid and pid != current_ppid])
         except:
             pass
         
@@ -3734,7 +3741,9 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
                 )
                 if fuser_result.returncode == 0:
                     pids = re.findall(r'\d+', fuser_result.stdout)
-                    pids_to_kill.extend([int(pid) for pid in pids if pid.isdigit()])
+                    found_pids = [int(pid) for pid in pids if pid.isdigit()]
+                    # Filter out current process and parent process
+                    pids_to_kill.extend([pid for pid in found_pids if pid != current_pid and pid != current_ppid])
             except:
                 pass
         
@@ -3754,7 +3763,10 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
                             # Extract PID from line like "users:(("python",pid=1234,fd=3))"
                             pid_match = re.search(r'pid=(\d+)', line)
                             if pid_match:
-                                pids_to_kill.append(int(pid_match.group(1)))
+                                pid = int(pid_match.group(1))
+                                # Filter out current process and parent process
+                                if pid != current_pid and pid != current_ppid:
+                                    pids_to_kill.append(pid)
             except:
                 pass
         
@@ -3762,12 +3774,17 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
         pids_to_kill = list(set(pids_to_kill))
         
         if not pids_to_kill:
-            return False, "No process found using the port"
+            return False, "No process found using the port (excluding current process)"
         
         killed_any = False
         messages = []
         
         for pid in pids_to_kill:
+            # Double-check we're not killing ourselves
+            if pid == current_pid or pid == current_ppid:
+                messages.append(f"Skipping current process (PID {pid})")
+                continue
+                
             try:
                 # Get process details
                 ps_result = subprocess.run(
@@ -3789,7 +3806,7 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
                 is_python = 'python' in proc_name or 'python3' in proc_name
                 is_mesh = any(keyword in proc_args.lower() for keyword in ['mesh', 'meshtastic', 'web_ui', '8420'])
                 
-                # Kill if it's Python and related to mesh/web_ui, or if it's definitely our process
+                # Only kill if it's Python and related to mesh/web_ui, AND it's not our current process
                 if is_python and (is_mesh or 'web_ui' in proc_args.lower() or 'mesh_bot' in proc_args.lower()):
                     # Try kill without sudo first
                     kill_result = subprocess.run(
@@ -3827,7 +3844,7 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
             time.sleep(1)
             return True, "; ".join(messages)
         else:
-            return False, "; ".join(messages) if messages else "No safe processes to kill"
+            return False, "; ".join(messages) if messages else "No safe processes to kill (excluding current process)"
         
     except FileNotFoundError:
         return False, "lsof/fuser/ss not available - cannot auto-free port"
