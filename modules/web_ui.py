@@ -1095,6 +1095,12 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 json_response = json.dumps(response, indent=2, default=str)
                 self.wfile.write(json_response.encode('utf-8'))
         except Exception as e:
+            # Log the error for debugging
+            import sys
+            import traceback
+            print(f"Web UI: Error handling POST request for {self.path}: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            
             # Outer exception - ensure we can send error response
             try:
                 # Check if headers were sent by trying to send them
@@ -1105,10 +1111,9 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 response = {"error": str(e), "type": type(e).__name__}
                 json_response = json.dumps(response, indent=2, default=str)
                 self.wfile.write(json_response.encode('utf-8'))
-            except:
+            except Exception as send_error:
                 # If we can't send error response (headers already sent), log it
-                import sys
-                print(f"Web UI: Critical error handling POST request: {e}", file=sys.stderr)
+                print(f"Web UI: Failed to send error response: {send_error}", file=sys.stderr)
                 try:
                     # Try to write error to response body if headers were already sent
                     response = {"error": str(e), "type": type(e).__name__}
@@ -3856,7 +3861,24 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
         raise Exception(f"Failed to create Web UI server on {host}:{port}")
     
     if background:
-        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        def run_server():
+            """Run server with error handling to prevent silent crashes."""
+            try:
+                server.serve_forever()
+            except Exception as e:
+                import sys
+                print(f"Web UI: Server crashed: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                # Try to restart the server
+                try:
+                    time.sleep(2)
+                    print(f"Web UI: Attempting to restart server...", file=sys.stderr)
+                    start_web_ui(host, port, background=True)
+                except Exception as restart_error:
+                    print(f"Web UI: Failed to restart: {restart_error}", file=sys.stderr)
+        
+        server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
         print(f"Web UI started in background at http://{host}:{port}")
         return server_thread
