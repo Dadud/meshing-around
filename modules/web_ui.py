@@ -3873,19 +3873,30 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
         
         def run_server():
             """Run server with error handling to prevent silent crashes."""
+            import sys
             try:
+                print(f"Web UI: Server thread starting on {host}:{port}", file=sys.stderr)
                 server.serve_forever()
+            except KeyboardInterrupt:
+                print(f"Web UI: Server interrupted", file=sys.stderr)
             except Exception as e:
-                import sys
                 print(f"Web UI: Server crashed: {e}", file=sys.stderr)
                 import traceback
                 traceback.print_exc(file=sys.stderr)
                 # Don't try to restart automatically - let the main bot handle it
                 # to avoid infinite recursion and multiple server instances
+            finally:
+                print(f"Web UI: Server thread exiting", file=sys.stderr)
         
         server_thread = threading.Thread(target=run_server, daemon=True, name=f"WebUI-{port}")
         server_thread.start()
-        print(f"Web UI started in background at http://{host}:{port}")
+        
+        # Give the thread a moment to start and verify it's alive
+        time.sleep(0.1)
+        if server_thread.is_alive():
+            print(f"Web UI started in background at http://{host}:{port}")
+        else:
+            raise Exception(f"Web UI server thread died immediately after start")
         
         # Store thread reference
         if not hasattr(start_web_ui, '_server_threads'):
