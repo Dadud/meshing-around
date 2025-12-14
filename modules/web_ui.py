@@ -645,12 +645,25 @@ def get_log_data(log_type: str = 'system', lines: int = 500, level_filter: str =
                     "count": 0
                 }
         
-        # Read log file
+        # Read log file - use efficient tail reading for large files
         log_lines = []
         try:
+            # For large files, read from the end instead of loading everything
+            file_size = os.path.getsize(log_file)
+            max_read_size = min(10 * 1024 * 1024, file_size)  # Read max 10MB
+            
             with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                # Read all lines and get the last N lines
-                all_lines = f.readlines()
+                if file_size > max_read_size:
+                    # For large files, seek to near the end and read from there
+                    f.seek(max(0, file_size - max_read_size))
+                    # Skip the first (possibly incomplete) line
+                    f.readline()
+                    all_lines = f.readlines()
+                else:
+                    # For smaller files, read normally
+                    all_lines = f.readlines()
+                
+                # Get the last N lines
                 log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
         except Exception as e:
             return {
@@ -1803,7 +1816,17 @@ def get_web_ui_html() -> str:
                 } else if (tabName === 'update') {
                     loadUpdateStatus();
                 } else if (tabName === 'logs') {
-                    loadLogs();
+                    loadLogs().catch(err => {
+                        console.error('Error loading logs tab:', err);
+                        const content = document.getElementById('logs-content');
+                        if (content) {
+                            content.innerHTML = `<div class="error" style="padding: 40px; text-align: center;">
+                                <h3>Error Loading Logs</h3>
+                                <p>${err.message || 'Unknown error'}</p>
+                                <button class="btn" onclick="showTab('logs', this)" style="margin-top: 20px;">Retry</button>
+                            </div>`;
+                        }
+                    });
                 } else if (tabName === 'map') {
                     initMap();
                 } else if (tabName === 'bbs') {
@@ -1841,19 +1864,33 @@ def get_web_ui_html() -> str:
         let mapInitialized = false; // Track if map has been initialized
         let mapBoundsFitted = false; // Track if bounds have been fitted (to preserve zoom on updates)
         
-        async function fetchAPI(endpoint, method='GET', data=null) {
+        async function fetchAPI(endpoint, method='GET', data=null, timeout=30000) {
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeout);
+                
                 const options = {
                     method: method,
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    signal: controller.signal
                 };
                 if (data) options.body = JSON.stringify(data);
+                
                 const response = await fetch(`${API_BASE}/api/${endpoint}`, options);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`);
+                }
                 return await response.json();
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.error(`Timeout fetching ${endpoint} after ${timeout}ms`);
+                    return { error: `Request timed out after ${timeout/1000}s` };
+                }
                 console.error(`Error fetching ${endpoint}:`, error);
-                return { error: error.message };
+                return { error: error.message || 'Network error - server may be unavailable' };
             }
         }
         
@@ -3576,7 +3613,18 @@ def get_web_ui_html() -> str:
                     // Only update log content, don't rebuild controls
                     const logViewer = document.getElementById('log-viewer');
                     if (logViewer) {
-                        loadLogs();
+                        // Only refresh if not currently loading
+                        if (!logViewer.querySelector('.loading')) {
+                            loadLogs().catch(err => {
+                                console.error('Error in loadLogs:', err);
+                                if (logViewer) {
+                                    logViewer.innerHTML = `<div style="color: #f87171; padding: 20px; text-align: center;">
+                                        <strong>Error:</strong> ${err.message}<br>
+                                        <button class="btn" onclick="loadLogs()" style="margin-top: 10px; padding: 6px 12px;">Retry</button>
+                                    </div>`;
+                                }
+                            });
+                        }
                     }
                 } else {
                     refreshData();
