@@ -345,7 +345,28 @@ for i in range(1, 10):
     try:
         if globals().get(f'interface{i}_enabled'):
             if interface_type == 'serial':
-                globals()[f'interface{i}'] = meshtastic.serial_interface.SerialInterface(globals().get(f'port{i}'))
+                # Retry logic for serial port locks
+                port_path = globals().get(f'port{i}')
+                max_init_retries = 5
+                retry_delay = 3
+                for retry in range(max_init_retries):
+                    try:
+                        globals()[f'interface{i}'] = meshtastic.serial_interface.SerialInterface(port_path)
+                        break  # Success, exit retry loop
+                    except (OSError, IOError) as e:
+                        if "Resource temporarily unavailable" in str(e) or "Could not exclusively lock" in str(e):
+                            if retry < max_init_retries - 1:
+                                logger.warning(f"System: Port {port_path} is locked (attempt {retry + 1}/{max_init_retries}), waiting {retry_delay}s...")
+                                logger.warning(f"System: Try: sudo lsof {port_path} or sudo fuser -k {port_path} to free the port")
+                                time.sleep(retry_delay)
+                                retry_delay += 2  # Increase delay with each retry
+                            else:
+                                logger.critical(f"System: Failed to lock port {port_path} after {max_init_retries} attempts")
+                                logger.critical(f"System: Port is likely in use by another process. Check with: sudo lsof {port_path}")
+                                raise
+                        else:
+                            # Different error, re-raise it
+                            raise
             elif interface_type == 'tcp':
                 host = globals().get(f'hostname{i}', '127.0.0.1')
                 port = 4403
