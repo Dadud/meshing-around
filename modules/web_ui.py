@@ -871,11 +871,25 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(404, "Not Found")
                 return
         except Exception as e:
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            response = {"error": str(e), "type": type(e).__name__}
-            json_response = json.dumps(response, indent=2, default=str)
-            self.wfile.write(json_response.encode('utf-8'))
+            # Ensure we can send error response even if headers were partially sent
+            try:
+                # Try to send error response
+                if not self.headers_sent:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                response = {"error": str(e), "type": type(e).__name__}
+                json_response = json.dumps(response, indent=2, default=str)
+                self.wfile.write(json_response.encode('utf-8'))
+            except:
+                # If we can't send error response, log it
+                import sys
+                print(f"Web UI: Critical error handling request: {e}", file=sys.stderr)
+                try:
+                    self.send_error(500, "Internal Server Error")
+                except:
+                    pass
     
     def do_POST(self):
         """Handle POST requests."""
@@ -3309,6 +3323,7 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
     # Try to start server with automatic port recovery
     max_retries = 3
     retry_delay = 2
+    server = None
     
     for attempt in range(max_retries):
         try:
@@ -3345,6 +3360,13 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
             else:
                 # Different error, re-raise it
                 raise
+        except Exception as e:
+            # Any other exception during server creation
+            raise Exception(f"Failed to start Web UI server: {str(e)}")
+    
+    # Ensure server was created successfully
+    if server is None:
+        raise Exception(f"Failed to create Web UI server on {host}:{port}")
     
     if background:
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
