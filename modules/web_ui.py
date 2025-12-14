@@ -3705,122 +3705,132 @@ def free_locked_tcp_port(port: int, auto_kill: bool = True):
         return False, "Auto-kill disabled"
     
     try:
-        # Try using lsof to find process using the port
-        lsof_result = subprocess.run(
-            ["lsof", "-ti", f":{port}"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+        # First, try to find and kill any existing Web UI server threads/processes
+        # Check for processes listening on the port
+        pids_to_kill = []
         
-        if lsof_result.returncode == 0 and lsof_result.stdout.strip():
-            pids = lsof_result.stdout.strip().split('\n')
-            killed_any = False
-            messages = []
+        # Method 1: Use lsof to find process using the port
+        try:
+            lsof_result = subprocess.run(
+                ["lsof", "-ti", f":{port}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
             
-            for pid_str in pids:
-                try:
-                    pid = int(pid_str.strip())
-                    # Get process details
-                    ps_result = subprocess.run(
-                        ["ps", "-p", str(pid), "-o", "comm="],
+            if lsof_result.returncode == 0 and lsof_result.stdout.strip():
+                pids_to_kill.extend([int(pid.strip()) for pid in lsof_result.stdout.strip().split('\n') if pid.strip().isdigit()])
+        except:
+            pass
+        
+        # Method 2: Use fuser as fallback
+        if not pids_to_kill:
+            try:
+                fuser_result = subprocess.run(
+                    ["fuser", f"{port}/tcp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if fuser_result.returncode == 0:
+                    pids = re.findall(r'\d+', fuser_result.stdout)
+                    pids_to_kill.extend([int(pid) for pid in pids if pid.isdigit()])
+            except:
+                pass
+        
+        # Method 3: Use netstat/ss as last resort
+        if not pids_to_kill:
+            try:
+                # Try ss first (modern Linux)
+                ss_result = subprocess.run(
+                    ["ss", "-tlnp"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if ss_result.returncode == 0:
+                    for line in ss_result.stdout.split('\n'):
+                        if f':{port} ' in line and 'LISTEN' in line:
+                            # Extract PID from line like "users:(("python",pid=1234,fd=3))"
+                            pid_match = re.search(r'pid=(\d+)', line)
+                            if pid_match:
+                                pids_to_kill.append(int(pid_match.group(1)))
+            except:
+                pass
+        
+        # Remove duplicates
+        pids_to_kill = list(set(pids_to_kill))
+        
+        if not pids_to_kill:
+            return False, "No process found using the port"
+        
+        killed_any = False
+        messages = []
+        
+        for pid in pids_to_kill:
+            try:
+                # Get process details
+                ps_result = subprocess.run(
+                    ["ps", "-p", str(pid), "-o", "comm=,args="],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                
+                if ps_result.returncode != 0:
+                    # Process might have already died
+                    continue
+                
+                proc_info = ps_result.stdout.strip()
+                proc_name = proc_info.split()[0].lower() if proc_info else "unknown"
+                proc_args = proc_info if len(proc_info.split()) > 1 else ""
+                
+                # Check if it's a Python/meshtastic process
+                is_python = 'python' in proc_name or 'python3' in proc_name
+                is_mesh = any(keyword in proc_args.lower() for keyword in ['mesh', 'meshtastic', 'web_ui', '8420'])
+                
+                # Kill if it's Python and related to mesh/web_ui, or if it's definitely our process
+                if is_python and (is_mesh or 'web_ui' in proc_args.lower() or 'mesh_bot' in proc_args.lower()):
+                    # Try kill without sudo first
+                    kill_result = subprocess.run(
+                        ["kill", "-9", str(pid)],
                         capture_output=True,
                         text=True,
-                        timeout=3
+                        timeout=5
                     )
-                    proc_name = ps_result.stdout.strip().lower() if ps_result.returncode == 0 else "unknown"
                     
-                    # Only kill Python/meshtastic processes for safety
-                    safe_to_kill = any(keyword in proc_name for keyword in ['python', 'meshtastic', 'mesh_bot', 'meshing'])
-                    
-                    if safe_to_kill:
-                        # Try regular kill first
-                        kill_result = subprocess.run(
-                            ["kill", "-9", str(pid)],
+                    if kill_result.returncode == 0:
+                        time.sleep(1)  # Wait longer for port to be released
+                        killed_any = True
+                        messages.append(f"Killed process {pid} ({proc_name})")
+                    else:
+                        # Try with sudo
+                        sudo_kill = subprocess.run(
+                            ["sudo", "kill", "-9", str(pid)],
                             capture_output=True,
                             text=True,
                             timeout=5
                         )
-                        
-                        if kill_result.returncode == 0:
-                            time.sleep(0.5)
+                        if sudo_kill.returncode == 0:
+                            time.sleep(1)
                             killed_any = True
-                            messages.append(f"Killed process {pid} ({proc_name})")
+                            messages.append(f"Killed process {pid} ({proc_name}) with sudo")
                         else:
-                            # Try with sudo
-                            sudo_kill = subprocess.run(
-                                ["sudo", "kill", "-9", str(pid)],
-                                capture_output=True,
-                                text=True,
-                                timeout=5
-                            )
-                            if sudo_kill.returncode == 0:
-                                time.sleep(0.5)
-                                killed_any = True
-                                messages.append(f"Killed process {pid} ({proc_name}) with sudo")
-                            else:
-                                messages.append(f"Failed to kill process {pid}: {sudo_kill.stderr.strip()}")
-                    else:
-                        messages.append(f"Port locked by {proc_name} (PID {pid}) - not a Python/meshtastic process, skipping")
-                except (ValueError, subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
-                    continue
-            
-            if killed_any:
-                return True, "; ".join(messages)
-            else:
-                return False, "; ".join(messages) if messages else "No safe processes to kill"
+                            messages.append(f"Failed to kill process {pid}: {sudo_kill.stderr.strip()}")
+                else:
+                    messages.append(f"Port locked by {proc_name} (PID {pid}) - not a mesh/web_ui process, skipping")
+            except (ValueError, subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+                continue
         
-        # Try fuser as fallback
-        fuser_result = subprocess.run(
-            ["fuser", f"{port}/tcp"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        if fuser_result.returncode == 0:
-            # fuser outputs PIDs in format like "8420/tcp:  1234  5678"
-            pids = re.findall(r'\d+', fuser_result.stdout)
-            for pid_str in pids:
-                try:
-                    pid = int(pid_str)
-                    ps_result = subprocess.run(
-                        ["ps", "-p", str(pid), "-o", "comm="],
-                        capture_output=True,
-                        text=True,
-                        timeout=3
-                    )
-                    if ps_result.returncode == 0:
-                        proc_name = ps_result.stdout.strip().lower()
-                        safe_to_kill = any(keyword in proc_name for keyword in ['python', 'meshtastic', 'mesh_bot', 'meshing'])
-                        
-                        if safe_to_kill:
-                            kill_result = subprocess.run(
-                                ["kill", "-9", str(pid)],
-                                capture_output=True,
-                                text=True,
-                                timeout=5
-                            )
-                            if kill_result.returncode == 0:
-                                time.sleep(0.5)
-                                return True, f"Freed port by killing process {pid} ({proc_name})"
-                            else:
-                                sudo_kill = subprocess.run(
-                                    ["sudo", "kill", "-9", str(pid)],
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=5
-                                )
-                                if sudo_kill.returncode == 0:
-                                    time.sleep(0.5)
-                                    return True, f"Freed port by killing process {pid} ({proc_name}) with sudo"
-                except (ValueError, subprocess.TimeoutExpired, subprocess.SubprocessError):
-                    continue
-        
-        return False, "Port appears free or unable to identify locking process"
+        if killed_any:
+            # Wait a bit more to ensure port is fully released
+            time.sleep(1)
+            return True, "; ".join(messages)
+        else:
+            return False, "; ".join(messages) if messages else "No safe processes to kill"
         
     except FileNotFoundError:
-        return False, "lsof/fuser not available - cannot auto-free port"
+        return False, "lsof/fuser/ss not available - cannot auto-free port"
     except subprocess.TimeoutExpired:
         return False, "Timeout checking port status"
     except Exception as e:
@@ -3935,9 +3945,14 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
                 print(f"Web UI: Server crashed: {e}", file=sys.stderr)
                 import traceback
                 traceback.print_exc(file=sys.stderr)
-                # Don't try to restart automatically - let the main bot handle it
-                # to avoid infinite recursion and multiple server instances
             finally:
+                # Ensure server socket is properly closed
+                try:
+                    server.shutdown()
+                    server.server_close()
+                    print(f"Web UI: Server socket closed", file=sys.stderr)
+                except:
+                    pass
                 print(f"Web UI: Server thread exiting", file=sys.stderr)
         
         server_thread = threading.Thread(target=run_server, daemon=True, name=f"WebUI-{port}")
@@ -3948,6 +3963,12 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
         if server_thread.is_alive():
             print(f"Web UI started in background at http://{host}:{port}")
         else:
+            # Clean up server if thread died
+            try:
+                server.shutdown()
+                server.server_close()
+            except:
+                pass
             raise Exception(f"Web UI server thread died immediately after start")
         
         # Store thread reference
