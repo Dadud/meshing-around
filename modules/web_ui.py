@@ -912,37 +912,37 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
             
             try:
                 if path_parts[0] == 'api' and len(path_parts) > 1:
-                content_length = int(self.headers.get('Content-Length', 0))
-                post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
-                request_data = json.loads(post_data.decode('utf-8')) if post_data else {}
-                
-                if path_parts[1] == 'config':
-                    # Save configuration
-                    response = write_config(request_data.get('config', {}))
-                elif path_parts[1] == 'update':
-                    # Perform update
-                    from modules.updater import perform_update
-                    dry_run = request_data.get('dry_run', False)
-                    reset_on_conflict = request_data.get('reset_on_conflict', False)
-                    response = perform_update(dry_run=dry_run, reset_on_conflict=reset_on_conflict)
-                elif path_parts[1] == 'send':
-                    # Send a message
-                    message = request_data.get('message', '')
-                    channel = request_data.get('channel', 0)
-                    node_id = request_data.get('node_id', 0)
-                    interface = request_data.get('interface', 1)
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+                    request_data = json.loads(post_data.decode('utf-8')) if post_data else {}
                     
-                    if not message:
-                        response = {"error": "Message is required"}
+                    if path_parts[1] == 'config':
+                        # Save configuration
+                        response = write_config(request_data.get('config', {}))
+                    elif path_parts[1] == 'update':
+                        # Perform update
+                        from modules.updater import perform_update
+                        dry_run = request_data.get('dry_run', False)
+                        reset_on_conflict = request_data.get('reset_on_conflict', False)
+                        response = perform_update(dry_run=dry_run, reset_on_conflict=reset_on_conflict)
+                    elif path_parts[1] == 'send':
+                        # Send a message
+                        message = request_data.get('message', '')
+                        channel = request_data.get('channel', 0)
+                        node_id = request_data.get('node_id', 0)
+                        interface = request_data.get('interface', 1)
+                        
+                        if not message:
+                            response = {"error": "Message is required"}
+                        else:
+                            response = send_mesh_message(message, channel, node_id, interface)
                     else:
-                        response = send_mesh_message(message, channel, node_id, interface)
+                        response = {"error": "Unknown POST endpoint"}
                 else:
-                    response = {"error": "Unknown POST endpoint"}
-            else:
-                response = {"error": "Invalid POST request"}
-            
-            json_response = json.dumps(response, indent=2, default=str)
-            self.wfile.write(json_response.encode('utf-8'))
+                    response = {"error": "Invalid POST request"}
+                
+                json_response = json.dumps(response, indent=2, default=str)
+                self.wfile.write(json_response.encode('utf-8'))
             except Exception as e:
                 # Inner exception - response headers already sent
                 response = {"error": str(e), "type": type(e).__name__}
