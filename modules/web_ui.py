@@ -14,11 +14,9 @@ import os
 import shutil
 import time
 import subprocess
-import re
 from typing import Dict, Any, Optional
 from datetime import datetime
 import threading
-import queue
 
 # Configuration file path
 CONFIG_FILE = "config.ini"

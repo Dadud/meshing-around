@@ -430,7 +430,7 @@ def start_mcp_server(host: str = '0.0.0.0', port: int = 8421, background: bool =
     Start the MCP server.
     
     Args:
-        host: Host address to bind to (default: 127.0.0.1)
+        host: Host address to bind to (default: 0.0.0.0)
         port: Port to listen on (default: 8421)
         background: If True, run in background thread (default: False)
     
