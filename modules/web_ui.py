@@ -12,9 +12,11 @@ import urllib.parse
 import configparser
 import os
 import shutil
+import time
 from typing import Dict, Any, Optional
 from datetime import datetime
 import threading
+import queue
 
 # Configuration file path
 CONFIG_FILE = "config.ini"
@@ -22,6 +24,12 @@ CONFIG_BACKUP_DIR = "data/config_backups"
 
 # Ensure backup directory exists
 os.makedirs(CONFIG_BACKUP_DIR, exist_ok=True)
+
+# SSE clients for real-time updates
+sse_clients = []
+sse_lock = threading.Lock()
+update_interval = 5  # Default 5 seconds
+auto_update_enabled = True
 
 
 def backup_config():
@@ -650,12 +658,94 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(get_web_ui_html().encode('utf-8'))
                 return
+            elif path_parts[0] == 'events':
+                # Server-Sent Events endpoint for real-time updates
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream')
+                self.send_header('Cache-Control', 'no-cache')
+                self.send_header('Connection', 'keep-alive')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                
+                # Add this client to the SSE clients list
+                with sse_lock:
+                    sse_clients.append(self.wfile)
+                
+                # Send initial connection message
+                try:
+                    self.wfile.write(f"data: {json.dumps({'type': 'connected', 'interval': update_interval, 'enabled': auto_update_enabled})}\n\n".encode('utf-8'))
+                    self.wfile.flush()
+                except:
+                    pass
+                
+                # Keep connection alive and send periodic updates
+                try:
+                    while True:
+                        if not auto_update_enabled:
+                            time.sleep(1)
+                            continue
+                        
+                        # Send heartbeat every 30 seconds to keep connection alive
+                        self.wfile.write(f": heartbeat\n\n".encode('utf-8'))
+                        self.wfile.flush()
+                        time.sleep(update_interval)
+                        
+                        # Send update event
+                        update_data = {
+                            'type': 'update',
+                            'timestamp': datetime.now().isoformat(),
+                            'interval': update_interval
+                        }
+                        self.wfile.write(f"data: {json.dumps(update_data)}\n\n".encode('utf-8'))
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    # Client disconnected
+                    pass
+                finally:
+                    # Remove client from list
+                    with sse_lock:
+                        if self.wfile in sse_clients:
+                            sse_clients.remove(self.wfile)
+                return
             elif path_parts[0] == 'api':
                 # API endpoints
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 
                 if len(path_parts) > 1:
+                    if path_parts[1] == 'update-settings':
+                        # Update auto-update settings
+                        global update_interval, auto_update_enabled
+                        content_length = int(self.headers.get('Content-Length', 0))
+                        if content_length > 0:
+                            post_data = self.rfile.read(content_length)
+                            request_data = json.loads(post_data.decode('utf-8'))
+                            if 'interval' in request_data:
+                                update_interval = max(1, min(60, int(request_data['interval'])))
+                            if 'enabled' in request_data:
+                                auto_update_enabled = bool(request_data['enabled'])
+                            
+                            # Broadcast settings change to all SSE clients
+                            with sse_lock:
+                                for client in sse_clients[:]:
+                                    try:
+                                        settings_data = {
+                                            'type': 'settings',
+                                            'interval': update_interval,
+                                            'enabled': auto_update_enabled
+                                        }
+                                        client.write(f"data: {json.dumps(settings_data)}\n\n".encode('utf-8'))
+                                        client.flush()
+                                    except:
+                                        if client in sse_clients:
+                                            sse_clients.remove(client)
+                        
+                        response = {
+                            "success": True,
+                            "interval": update_interval,
+                            "enabled": auto_update_enabled
+                        }
+                    elif path_parts[1] == 'config':
                     if path_parts[1] == 'config':
                         # Get configuration
                         config_data = read_config()
@@ -744,6 +834,15 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             response = get_message_history(1000)
                         else:
                             response = {"error": "Unknown export type"}
+                    elif path_parts[1] == 'update':
+                        # Update status and operations
+                        from modules.updater import get_update_status, perform_update, check_for_updates
+                        if len(path_parts) > 2 and path_parts[2] == 'check':
+                            response = check_for_updates()
+                        elif len(path_parts) > 2 and path_parts[2] == 'status':
+                            response = get_update_status()
+                        else:
+                            response = get_update_status()
                     else:
                         response = {"error": "Unknown API endpoint"}
                 else:
@@ -786,6 +885,12 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if path_parts[1] == 'config':
                     # Save configuration
                     response = write_config(request_data.get('config', {}))
+                elif path_parts[1] == 'update':
+                    # Perform update
+                    from modules.updater import perform_update
+                    dry_run = request_data.get('dry_run', False)
+                    reset_on_conflict = request_data.get('reset_on_conflict', False)
+                    response = perform_update(dry_run=dry_run, reset_on_conflict=reset_on_conflict)
                 elif path_parts[1] == 'send':
                     # Send a message
                     message = request_data.get('message', '')
@@ -1316,6 +1421,7 @@ def get_web_ui_html() -> str:
             <button class="tab" onclick="showTab('composer', this)">✉️ Send</button>
             <button class="tab" onclick="showTab('management', this)">👥 Management</button>
             <button class="tab" onclick="showTab('leaderboard', this)">🏆 Leaderboard</button>
+            <button class="tab" onclick="showTab('update', this)">🔄 Update</button>
             <button class="tab" onclick="showTab('config', this)">⚙️ Config</button>
         </div>
         
@@ -1323,6 +1429,11 @@ def get_web_ui_html() -> str:
             <div id="dashboard" class="tab-content active">
                 <h2>Dashboard Overview</h2>
                 <div id="dashboard-content" class="loading">Loading dashboard data...</div>
+            </div>
+            
+            <div id="update" class="tab-content">
+                <h2>🔄 Auto-Update</h2>
+                <div id="update-content" class="loading">Loading update status...</div>
             </div>
             
             <div id="config" class="tab-content">
@@ -1498,6 +1609,8 @@ def get_web_ui_html() -> str:
             try {
                 if (tabName === 'config') {
                     loadConfig();
+                } else if (tabName === 'update') {
+                    loadUpdateStatus();
                 } else if (tabName === 'map') {
                     initMap();
                 } else if (tabName === 'bbs') {
@@ -1794,6 +1907,141 @@ def get_web_ui_html() -> str:
             }
             
             content.innerHTML = html;
+        }
+        
+        async function loadUpdateStatus() {
+            const content = document.getElementById('update-content');
+            try {
+                const data = await fetchAPI('update/status');
+                if (data.error) {
+                    content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                const gitInfo = data.git_info || {};
+                const canUpdate = data.can_update || false;
+                const updateAvailable = data.update_available || false;
+                
+                let html = '<div class="config-section">';
+                html += '<h3>Repository Information</h3>';
+                
+                if (!gitInfo.is_git_repo) {
+                    html += '<div class="error">';
+                    html += '<p><strong>Not a Git Repository</strong></p>';
+                    html += `<p>${gitInfo.error || 'This installation is not a git repository. Updates are not available.'}</p>`;
+                    html += '</div>';
+                } else {
+                    html += '<div class="form-group">';
+                    html += `<label>Repository</label>`;
+                    if (gitInfo.repo_owner && gitInfo.repo_name) {
+                        html += `<p><strong>${gitInfo.repo_owner}/${gitInfo.repo_name}</strong></p>`;
+                    } else if (gitInfo.remote_url) {
+                        html += `<p><strong>${gitInfo.remote_url}</strong></p>`;
+                    }
+                    html += '</div>';
+                    
+                    html += '<div class="form-group">';
+                    html += `<label>Branch</label>`;
+                    html += `<p><strong>${gitInfo.branch || 'Unknown'}</strong></p>`;
+                    html += '</div>';
+                    
+                    html += '<div class="form-group">';
+                    html += `<label>Current Commit</label>`;
+                    html += `<p><code>${gitInfo.current_commit || 'Unknown'}</code></p>`;
+                    html += '</div>';
+                    
+                    if (gitInfo.remote_commit) {
+                        html += '<div class="form-group">';
+                        html += `<label>Remote Commit</label>`;
+                        html += `<p><code>${gitInfo.remote_commit}</code></p>`;
+                        html += '</div>';
+                    }
+                    
+                    if (updateAvailable) {
+                        html += '<div class="form-group" style="background: #fef3c7; padding: 16px; border-radius: 8px; border: 2px solid #f59e0b; margin: 20px 0;">';
+                        html += '<p style="margin: 0; font-weight: 600; color: #92400e;">🔄 Update Available!</p>';
+                        html += '<p style="margin: 8px 0 0 0; color: #78350f;">A new version is available from the remote repository.</p>';
+                        html += '</div>';
+                    } else {
+                        html += '<div class="form-group" style="background: #d1fae5; padding: 16px; border-radius: 8px; border: 2px solid #10b981; margin: 20px 0;">';
+                        html += '<p style="margin: 0; font-weight: 600; color: #065f46;">✅ Up to Date</p>';
+                        html += '<p style="margin: 8px 0 0 0; color: #047857;">Your installation is up to date with the remote repository.</p>';
+                        html += '</div>';
+                    }
+                    
+                    html += '<div class="form-group" style="margin-top: 24px;">';
+                    html += '<button class="btn btn-success" onclick="performUpdate(false)" style="margin-right: 12px;">🔄 Update Now</button>';
+                    html += '<button class="btn" onclick="performUpdate(true)" style="margin-right: 12px;">🔍 Check for Updates</button>';
+                    html += '<button class="btn btn-danger" onclick="performUpdate(false, true)" style="margin-right: 12px;">⚠️ Force Update (Reset)</button>';
+                    html += '</div>';
+                    
+                    html += '<div class="form-group" style="margin-top: 16px;">';
+                    html += '<small style="color: #6b7280;">';
+                    html += '<strong>Update Now:</strong> Pulls latest changes from the remote repository.<br>';
+                    html += '<strong>Check for Updates:</strong> Checks if updates are available without making changes.<br>';
+                    html += '<strong>Force Update:</strong> Resets to remote version, discarding any local changes.';
+                    html += '</small>';
+                    html += '</div>';
+                }
+                
+                html += '</div>';
+                content.innerHTML = html;
+            } catch (error) {
+                content.innerHTML = `<div class="error">Error loading update status: ${error.message}</div>`;
+            }
+        }
+        
+        async function performUpdate(dryRun = false, resetOnConflict = false) {
+            const content = document.getElementById('update-content');
+            const originalContent = content.innerHTML;
+            
+            try {
+                content.innerHTML = '<div class="loading">Updating...</div>';
+                
+                const response = await fetch(`${API_BASE}/api/update`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        dry_run: dryRun,
+                        reset_on_conflict: resetOnConflict
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    content.innerHTML = `<div class="error"><p><strong>Update Failed</strong></p><p>${data.error}</p></div>`;
+                    if (data.message) {
+                        content.innerHTML += `<p style="margin-top: 12px;">${data.message}</p>`;
+                    }
+                } else if (data.success) {
+                    let html = '<div style="background: #d1fae5; padding: 16px; border-radius: 8px; border: 2px solid #10b981; margin: 20px 0;">';
+                    html += '<p style="margin: 0; font-weight: 600; color: #065f46;">✅ Update Successful!</p>';
+                    if (data.output && data.output.length > 0) {
+                        html += '<ul style="margin: 8px 0 0 0; padding-left: 20px;">';
+                        data.output.forEach(msg => {
+                            html += `<li style="color: #047857;">${msg}</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    if (data.new_commit) {
+                        html += `<p style="margin-top: 8px; color: #047857;">New commit: <code>${data.new_commit}</code></p>`;
+                    }
+                    html += '</div>';
+                    content.innerHTML = html;
+                    
+                    // Reload status after a moment
+                    setTimeout(() => {
+                        loadUpdateStatus();
+                    }, 2000);
+                } else {
+                    content.innerHTML = `<div class="error"><p><strong>Update Failed</strong></p><p>${data.message || 'Unknown error'}</p></div>`;
+                }
+            } catch (error) {
+                content.innerHTML = `<div class="error">Error performing update: ${error.message}</div>`;
+            }
         }
         
         function toggleConfigSection(sectionId) {
