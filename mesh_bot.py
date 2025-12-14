@@ -1693,6 +1693,15 @@ def handle_whois(message, deviceID, channel_number, message_from_id):
 def handle_boot(mesh=True):
     try:
         print (CustomFormatter.bold_white + f"\nMeshtastic Autoresponder Bot CTL+C to exit\n" + CustomFormatter.reset)
+        
+        # Start Web UI in background
+        try:
+            from modules.web_ui import start_web_ui
+            start_web_ui(host='0.0.0.0', port=8420, background=True)
+            logger.info("System: Web UI started on port 8420")
+        except Exception as e:
+            logger.warning(f"System: Failed to start Web UI: {e}")
+        
         if mesh:
             
             for i in range(1, 10):
