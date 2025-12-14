@@ -756,6 +756,28 @@ def send_mesh_message(message: str, channel: int = 0, node_id: int = 0, interfac
 class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP request handler for Web UI."""
     
+    def handle(self):
+        """Override handle to catch all exceptions and prevent server crashes."""
+        try:
+            super().handle()
+        except Exception as e:
+            import sys
+            import traceback
+            print(f"Web UI: Unhandled exception in request handler: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            # Try to send error response
+            try:
+                if not self.wfile.closed:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    response = {"error": str(e), "type": type(e).__name__}
+                    json_response = json.dumps(response, indent=2, default=str)
+                    self.wfile.write(json_response.encode('utf-8'))
+            except:
+                pass
+    
     def do_GET(self):
         """Handle GET requests."""
         global update_interval, auto_update_enabled
