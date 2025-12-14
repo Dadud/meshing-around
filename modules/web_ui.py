@@ -2323,31 +2323,34 @@ def get_web_ui_html() -> str:
         function initMap() {
             // Wait a bit for the tab to be visible
             setTimeout(() => {
-                if (map && typeof map.remove === 'function') {
-                    map.remove();
-                }
-                
-                // Check if map container exists
-                const mapContainer = document.getElementById('node-map');
-                if (!mapContainer) {
-                    console.error('Map container not found');
-                    return;
-                }
-                
-                // Initialize map centered on a default location (will adjust to nodes)
-                try {
-                    map = L.map('node-map').setView([37.7749, -122.4194], 10);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© OpenStreetMap contributors',
-                        maxZoom: 19
-                    }).addTo(map);
+                // Only reinitialize if map doesn't exist
+                if (!map) {
+                    // Check if map container exists
+                    const mapContainer = document.getElementById('node-map');
+                    if (!mapContainer) {
+                        console.error('Map container not found');
+                        return;
+                    }
                     
-                    mapMarkers = [];
+                    // Initialize map centered on a default location (will adjust to nodes)
+                    try {
+                        map = L.map('node-map').setView([37.7749, -122.4194], 10);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '© OpenStreetMap contributors',
+                            maxZoom: 19
+                        }).addTo(map);
+                        
+                        mapMarkers = [];
+                        mapInitialized = false; // Mark as not yet initialized (will fit bounds on first load)
+                        loadMapNodes();
+                    } catch (e) {
+                        console.error('Error initializing map:', e);
+                        document.getElementById('map-container').innerHTML = 
+                            '<div style="padding: 40px; text-align: center; color: #6b7280;"><h3>Map Error</h3><p>Could not initialize map. Please refresh the page.</p></div>';
+                    }
+                } else {
+                    // Map already exists, just update nodes without resetting view
                     loadMapNodes();
-                } catch (e) {
-                    console.error('Error initializing map:', e);
-                    document.getElementById('map-container').innerHTML = 
-                        '<div style="padding: 40px; text-align: center; color: #6b7280;"><h3>Map Error</h3><p>Could not initialize map. Please refresh the page.</p></div>';
                 }
             }, 100);
         }
@@ -2444,12 +2447,19 @@ def get_web_ui_html() -> str:
                 }
             }
             
+            // Only fit bounds on first initialization, preserve zoom/center on updates
             if (hasPositions && bounds.length > 0) {
-                try {
-                    map.fitBounds(bounds, { padding: [20, 20] });
-                } catch (e) {
-                    console.error('Error fitting bounds:', e);
+                if (!mapInitialized) {
+                    // First load - fit bounds to show all nodes
+                    try {
+                        map.fitBounds(bounds, { padding: [20, 20] });
+                        mapInitialized = true;
+                    } catch (e) {
+                        console.error('Error fitting bounds:', e);
+                        mapInitialized = true;
+                    }
                 }
+                // On subsequent updates, don't change the view - just update markers
             } else {
                 // Show message if no positions
                 const mapContainer = document.getElementById('map-container');
