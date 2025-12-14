@@ -384,6 +384,252 @@ def get_bbs_messages() -> Dict[str, Any]:
         }
 
 
+def get_message_history(limit: int = 100) -> Dict[str, Any]:
+    """Get message history from settings module."""
+    try:
+        system_module, globals_dict = get_system_globals()
+        if not system_module or not globals_dict:
+            return {"error": "System module not available"}
+        
+        # Access msg_history from settings
+        import modules.settings as settings_module
+        msg_history = getattr(settings_module, 'msg_history', [])
+        
+        # Format: (name, message_string, channel_number, timestamp, rxNode)
+        messages = []
+        for msg in msg_history[-limit:]:  # Get most recent
+            if len(msg) >= 5:
+                messages.append({
+                    "fromName": msg[0] if len(msg) > 0 else "Unknown",
+                    "message": msg[1] if len(msg) > 1 else "",
+                    "channel": msg[2] if len(msg) > 2 else 0,
+                    "timestamp": msg[3] if len(msg) > 3 else "",
+                    "interface": msg[4] if len(msg) > 4 else 1
+                })
+        
+        return {
+            "success": True,
+            "messages": list(reversed(messages)),  # Most recent first
+            "count": len(messages)
+        }
+    except Exception as e:
+        return {
+            "error": f"Failed to get message history: {str(e)}",
+            "type": type(e).__name__
+        }
+
+
+def get_node_details(node_id: str, interface_num: Optional[int] = None) -> Dict[str, Any]:
+    """Get detailed information about a specific node."""
+    try:
+        system_module, globals_dict = get_system_globals()
+        if not system_module or not globals_dict:
+            return {"error": "System module not available"}
+        
+        # Try to find node across all interfaces
+        node_data = None
+        found_interface = None
+        
+        interfaces_to_check = [interface_num] if interface_num else range(1, 10)
+        
+        for i in interfaces_to_check:
+            interface = globals_dict.get(f'interface{i}')
+            if not interface:
+                continue
+            
+            if hasattr(interface, 'nodes') and interface.nodes:
+                # Try both hex and decimal node ID
+                node_hex = node_id if '!' in node_id else None
+                node_dec = int(node_id) if node_id.isdigit() else None
+                
+                for hex_id, data in interface.nodes.items():
+                    if (node_hex and hex_id == node_hex) or (node_dec and data.get('num') == node_dec):
+                        node_data = data
+                        found_interface = i
+                        break
+                
+                if node_data:
+                    break
+        
+        if not node_data:
+            return {"error": f"Node {node_id} not found"}
+        
+        # Get my node number
+        my_node_num = globals_dict.get(f'myNodeNum{found_interface}', 0)
+        
+        # Build detailed node info
+        result = {
+            "nodeId": node_data.get('num', 0),
+            "nodeIdHex": node_id if '!' in node_id else hex(node_data.get('num', 0)),
+            "interface": found_interface,
+            "isLocal": node_data.get('num', 0) == my_node_num,
+            "shortName": "",
+            "longName": "",
+            "snr": node_data.get('snr', 0),
+            "rssi": node_data.get('rssi', 0),
+            "lastHeard": node_data.get('lastHeard', 0),
+            "position": None,
+            "deviceMetrics": None,
+            "user": node_data.get('user', {})
+        }
+        
+        if 'user' in node_data:
+            result["shortName"] = node_data['user'].get('shortName', '')
+            result["longName"] = node_data['user'].get('longName', '')
+        
+        if 'position' in node_data and node_data['position']:
+            result["position"] = {
+                "latitude": node_data['position'].get('latitude'),
+                "longitude": node_data['position'].get('longitude'),
+                "altitude": node_data['position'].get('altitude', 0),
+                "time": node_data['position'].get('time', 0)
+            }
+        
+        if 'deviceMetrics' in node_data and node_data['deviceMetrics']:
+            result["deviceMetrics"] = node_data['deviceMetrics']
+        
+        # Get message count from leaderboard
+        mesh_leaderboard = getattr(system_module, 'meshLeaderboard', {})
+        node_message_counts = mesh_leaderboard.get('nodeMessageCounts', {})
+        result["messageCount"] = node_message_counts.get(str(result["nodeId"]), 0)
+        
+        return result
+    except Exception as e:
+        return {
+            "error": f"Failed to get node details: {str(e)}",
+            "type": type(e).__name__
+        }
+
+
+def get_system_health() -> Dict[str, Any]:
+    """Get system health information."""
+    try:
+        system_module, globals_dict = get_system_globals()
+        if not system_module or not globals_dict:
+            return {"error": "System module not available"}
+        
+        import time
+        
+        # Get interface status
+        interfaces = []
+        for i in range(1, 10):
+            interface = globals_dict.get(f'interface{i}')
+            enabled = globals_dict.get(f'interface{i}_enabled', False)
+            retry = globals_dict.get(f'retry_int{i}', False)
+            
+            if enabled:
+                status = "connected" if interface and not retry else "disconnected" if retry else "unknown"
+                interfaces.append({
+                    "number": i,
+                    "enabled": enabled,
+                    "status": status,
+                    "retrying": retry
+                })
+        
+        # Get uptime (approximate - time since import)
+        uptime_seconds = time.time() - (globals_dict.get('start_time', time.time()))
+        
+        result = {
+            "success": True,
+            "uptime": uptime_seconds,
+            "uptimeFormatted": format_uptime(uptime_seconds),
+            "interfaces": interfaces,
+            "memory": {"used": 0, "percent": 0},
+            "cpu": {"percent": 0}
+        }
+        
+        # Try to get process info if psutil is available
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            result["memory"] = {
+                "used": process.memory_info().rss / 1024 / 1024,  # MB
+                "percent": process.memory_percent()
+            }
+            result["cpu"] = {
+                "percent": process.cpu_percent(interval=0.1)
+            }
+        except ImportError:
+            result["note"] = "psutil not available for detailed stats"
+        
+        return result
+    except Exception as e:
+        return {
+            "error": f"Failed to get system health: {str(e)}",
+            "type": type(e).__name__
+        }
+
+
+def format_uptime(seconds: float) -> str:
+    """Format uptime in human-readable format."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    elif seconds < 86400:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours}h {minutes}m"
+    else:
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        return f"{days}d {hours}h"
+
+
+def get_node_management() -> Dict[str, Any]:
+    """Get node management information (ban list, admin list, etc.)."""
+    try:
+        import modules.settings as settings_module
+        
+        bbs_ban_list = getattr(settings_module, 'bbs_ban_list', [])
+        bbs_admin_list = getattr(settings_module, 'bbs_admin_list', [])
+        auto_banlist = getattr(settings_module, 'autoBanlist', [])
+        
+        return {
+            "success": True,
+            "bannedNodes": [str(n) for n in bbs_ban_list] if isinstance(bbs_ban_list, list) else [],
+            "adminNodes": [str(n) for n in bbs_admin_list] if isinstance(bbs_admin_list, list) else [],
+            "autoBanned": [str(n) for n in auto_banlist] if isinstance(auto_banlist, list) else []
+        }
+    except Exception as e:
+        return {
+            "error": f"Failed to get node management data: {str(e)}",
+            "type": type(e).__name__
+        }
+
+
+def send_mesh_message(message: str, channel: int = 0, node_id: int = 0, interface: int = 1) -> Dict[str, Any]:
+    """Send a message via the mesh network."""
+    try:
+        system_module, globals_dict = get_system_globals()
+        if not system_module or not globals_dict:
+            return {"error": "System module not available"}
+        
+        # Import send_message function
+        send_message_func = getattr(system_module, 'send_message', None)
+        if not send_message_func:
+            return {"error": "send_message function not available"}
+        
+        # Send the message
+        result = send_message_func(message, channel, node_id, interface)
+        
+        if result:
+            return {
+                "success": True,
+                "message": "Message sent successfully"
+            }
+        else:
+            return {
+                "error": "Failed to send message"
+            }
+    except Exception as e:
+        return {
+            "error": f"Failed to send message: {str(e)}",
+            "type": type(e).__name__
+        }
+
+
 class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP request handler for Web UI."""
     
@@ -457,10 +703,47 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                     elif path_parts[1] == 'map':
                         # Get nodes with positions for map
                         nodes = get_node_data()
+                        position = get_position_metadata()
                         response = {
                             "success": True,
-                            "nodes": nodes
+                            "nodes": nodes,
+                            "position": position
                         }
+                    elif path_parts[1] == 'activity':
+                        # Get message history/activity feed
+                        limit = 100
+                        if len(path_parts) > 2 and path_parts[2].isdigit():
+                            limit = int(path_parts[2])
+                        response = get_message_history(limit)
+                    elif path_parts[1] == 'node':
+                        # Get detailed node information
+                        if len(path_parts) > 2:
+                            node_id = path_parts[2]
+                            interface_num = None
+                            if len(path_parts) > 3 and path_parts[3].isdigit():
+                                interface_num = int(path_parts[3])
+                            response = get_node_details(node_id, interface_num)
+                        else:
+                            response = {"error": "Node ID required"}
+                    elif path_parts[1] == 'health':
+                        # Get system health
+                        response = get_system_health()
+                    elif path_parts[1] == 'management':
+                        # Get node management data
+                        response = get_node_management()
+                    elif path_parts[1] == 'export':
+                        # Export data
+                        export_type = path_parts[2] if len(path_parts) > 2 else 'nodes'
+                        if export_type == 'nodes':
+                            response = get_node_data()
+                        elif export_type == 'telemetry':
+                            response = get_rf_telemetry()
+                        elif export_type == 'bbs':
+                            response = get_bbs_messages()
+                        elif export_type == 'activity':
+                            response = get_message_history(1000)
+                        else:
+                            response = {"error": "Unknown export type"}
                     else:
                         response = {"error": "Unknown API endpoint"}
                 else:
@@ -496,13 +779,24 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
         
         try:
             if path_parts[0] == 'api' and len(path_parts) > 1:
+                content_length = int(self.headers.get('Content-Length', 0))
+                post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
+                request_data = json.loads(post_data.decode('utf-8')) if post_data else {}
+                
                 if path_parts[1] == 'config':
                     # Save configuration
-                    content_length = int(self.headers['Content-Length'])
-                    post_data = self.rfile.read(content_length)
-                    config_data = json.loads(post_data.decode('utf-8'))
+                    response = write_config(request_data.get('config', {}))
+                elif path_parts[1] == 'send':
+                    # Send a message
+                    message = request_data.get('message', '')
+                    channel = request_data.get('channel', 0)
+                    node_id = request_data.get('node_id', 0)
+                    interface = request_data.get('interface', 1)
                     
-                    response = write_config(config_data.get('config', {}))
+                    if not message:
+                        response = {"error": "Message is required"}
+                    else:
+                        response = send_mesh_message(message, channel, node_id, interface)
                 else:
                     response = {"error": "Unknown POST endpoint"}
             else:
@@ -757,12 +1051,20 @@ def get_web_ui_html() -> str:
         
         <div class="tabs">
             <button class="tab active" onclick="showTab('dashboard')">📊 Dashboard</button>
+            <button class="tab" onclick="showTab('activity')">📨 Activity</button>
             <button class="tab" onclick="showTab('map')">🗺️ Node Map</button>
-            <button class="tab" onclick="showTab('bbs')">💬 BBS</button>
             <button class="tab" onclick="showTab('nodes')">📡 Nodes</button>
+            <button class="tab" onclick="showTab('node-details')">🔍 Node Details</button>
             <button class="tab" onclick="showTab('telemetry')">📈 RF Telemetry</button>
+            <button class="tab" onclick="showTab('statistics')">📊 Statistics</button>
+            <button class="tab" onclick="showTab('network')">🌐 Network</button>
+            <button class="tab" onclick="showTab('health')">💚 Health</button>
+            <button class="tab" onclick="showTab('alerts')">🚨 Alerts</button>
+            <button class="tab" onclick="showTab('bbs')">💬 BBS</button>
+            <button class="tab" onclick="showTab('composer')">✉️ Send</button>
+            <button class="tab" onclick="showTab('management')">👥 Management</button>
             <button class="tab" onclick="showTab('leaderboard')">🏆 Leaderboard</button>
-            <button class="tab" onclick="showTab('config')">⚙️ Configuration</button>
+            <button class="tab" onclick="showTab('config')">⚙️ Config</button>
         </div>
         
         <div class="content">
@@ -787,6 +1089,9 @@ def get_web_ui_html() -> str:
             
             <div id="telemetry" class="tab-content">
                 <h2>RF Telemetry</h2>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn" onclick="exportData('telemetry')">📥 Export Telemetry (JSON)</button>
+                </div>
                 <div id="telemetry-content" class="loading">Loading telemetry...</div>
             </div>
             
@@ -807,13 +1112,109 @@ def get_web_ui_html() -> str:
             
             <div id="bbs" class="tab-content">
                 <h2>Bulletin Board System (BBS)</h2>
+                <div style="margin-bottom: 20px;">
+                    <button class="btn" onclick="exportData('bbs')">📥 Export BBS (JSON)</button>
+                </div>
                 <div id="bbs-content" class="loading">Loading BBS messages...</div>
+            </div>
+            
+            <div id="activity" class="tab-content">
+                <h2>Activity Feed</h2>
+                <div style="margin-bottom: 20px;">
+                    <input type="text" id="activity-filter" placeholder="Filter messages..." style="padding: 8px; width: 300px; border-radius: 6px; border: 1px solid #d1d5db;" onkeyup="filterActivity()">
+                    <button class="btn" onclick="loadActivity()" style="margin-left: 10px;">🔄 Refresh</button>
+                </div>
+                <div id="activity-content" class="loading">Loading activity feed...</div>
+            </div>
+            
+            <div id="node-details" class="tab-content">
+                <h2>Node Details</h2>
+                <div style="margin-bottom: 20px;">
+                    <input type="text" id="node-search" placeholder="Enter Node ID (hex or decimal)" style="padding: 8px; width: 300px; border-radius: 6px; border: 1px solid #d1d5db;">
+                    <button class="btn" onclick="loadNodeDetails()" style="margin-left: 10px;">🔍 Search</button>
+                </div>
+                <div id="node-details-content" class="loading">Enter a Node ID to view details</div>
+            </div>
+            
+            <div id="statistics" class="tab-content">
+                <h2>Statistics & Charts</h2>
+                <div style="margin-bottom: 20px;">
+                    <select id="stat-timeframe" onchange="loadStatistics()" style="padding: 8px; border-radius: 6px; border: 1px solid #d1d5db;">
+                        <option value="hour">Last Hour</option>
+                        <option value="day" selected>Last 24 Hours</option>
+                        <option value="week">Last Week</option>
+                    </select>
+                </div>
+                <div id="statistics-content" class="loading">Loading statistics...</div>
+            </div>
+            
+            <div id="network" class="tab-content">
+                <h2>Network Graph / Topology</h2>
+                <div id="network-content" class="loading">Loading network graph...</div>
+            </div>
+            
+            <div id="health" class="tab-content">
+                <h2>System Health</h2>
+                <div id="health-content" class="loading">Loading system health...</div>
+            </div>
+            
+            <div id="alerts" class="tab-content">
+                <h2>Alert Center</h2>
+                <div id="alerts-content" class="loading">Loading alerts...</div>
+            </div>
+            
+            <div id="composer" class="tab-content">
+                <h2>Message Composer</h2>
+                <div class="config-section">
+                    <div class="form-group">
+                        <label>Message</label>
+                        <textarea id="composer-message" rows="4" placeholder="Enter your message..." style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db;"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Send To</label>
+                        <select id="composer-type" onchange="updateComposerType()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db;">
+                            <option value="channel">Channel</option>
+                            <option value="node">Direct Message (Node)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="composer-channel-group">
+                        <label>Channel Number</label>
+                        <input type="number" id="composer-channel" value="0" min="0" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db;">
+                    </div>
+                    <div class="form-group" id="composer-node-group" style="display: none;">
+                        <label>Node ID (hex or decimal)</label>
+                        <input type="text" id="composer-node" placeholder="!12345678 or 12345678" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db;">
+                    </div>
+                    <div class="form-group">
+                        <label>Interface</label>
+                        <select id="composer-interface" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db;">
+                            <option value="1">Interface 1</option>
+                            <option value="2">Interface 2</option>
+                            <option value="3">Interface 3</option>
+                            <option value="4">Interface 4</option>
+                            <option value="5">Interface 5</option>
+                            <option value="6">Interface 6</option>
+                            <option value="7">Interface 7</option>
+                            <option value="8">Interface 8</option>
+                            <option value="9">Interface 9</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-success" onclick="sendMessage()">📤 Send Message</button>
+                    <div id="composer-result" style="margin-top: 15px;"></div>
+                </div>
+            </div>
+            
+            <div id="management" class="tab-content">
+                <h2>Node Management</h2>
+                <div id="management-content" class="loading">Loading management data...</div>
             </div>
         </div>
     </div>
     
     <!-- Leaflet JS for OpenStreetMap -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js for statistics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <script>
         const API_BASE = window.location.origin;
@@ -828,12 +1229,25 @@ def get_web_ui_html() -> str:
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
             
+            // Load appropriate data for each tab
             if (tabName === 'config') {
                 loadConfig();
             } else if (tabName === 'map') {
                 initMap();
             } else if (tabName === 'bbs') {
                 loadBBS();
+            } else if (tabName === 'activity') {
+                loadActivity();
+            } else if (tabName === 'health') {
+                loadHealth();
+            } else if (tabName === 'management') {
+                loadManagement();
+            } else if (tabName === 'statistics') {
+                loadStatistics();
+            } else if (tabName === 'network') {
+                loadNetworkGraph();
+            } else if (tabName === 'alerts') {
+                loadAlerts();
             } else {
                 refreshData();
             }
@@ -1162,21 +1576,44 @@ def get_web_ui_html() -> str:
             }, 100);
         }
         
+        let positionTrails = {}; // Store position history for trails
+        
         async function loadMapNodes() {
             if (!map) return;
             
             const data = await fetchAPI('map');
+            
             if (data.error || !data.nodes) {
                 console.error('Error loading nodes for map:', data.error);
                 return;
             }
             
-            // Clear existing markers
+            // Clear existing markers and trails
             mapMarkers.forEach(marker => map.removeLayer(marker));
             mapMarkers = [];
             
+            // Clear existing trails
+            Object.values(positionTrails).forEach(trail => {
+                if (trail && map.hasLayer(trail)) {
+                    map.removeLayer(trail);
+                }
+            });
+            positionTrails = {};
+            
             let hasPositions = false;
             const bounds = [];
+            
+            // Process position metadata for trails (if available in future)
+            const nodePositions = {};
+            if (data.position && !data.position.error && data.position.nodes) {
+                for (const nodeId in data.position.nodes) {
+                    const posData = data.position.nodes[nodeId];
+                    // If position history is stored, it would be here
+                    if (posData.positions && Array.isArray(posData.positions)) {
+                        nodePositions[nodeId] = posData.positions;
+                    }
+                }
+            }
             
             for (const key in data.nodes) {
                 if (data.nodes[key].nodes) {
@@ -1186,6 +1623,23 @@ def get_web_ui_html() -> str:
                             const lat = node.position.latitude;
                             const lng = node.position.longitude;
                             const name = node.shortName || node.longName || `Node ${node.nodeId}`;
+                            const nodeId = node.nodeIdHex || node.nodeId;
+                            
+                            // Draw position trail if available
+                            if (nodePositions[nodeId] && nodePositions[nodeId].length > 1) {
+                                const trailCoords = nodePositions[nodeId]
+                                    .filter(p => p.latitude && p.longitude)
+                                    .map(p => [p.latitude, p.longitude]);
+                                
+                                if (trailCoords.length > 1) {
+                                    const trail = L.polyline(trailCoords, {
+                                        color: node.isLocal ? '#10b981' : '#3b82f6',
+                                        weight: 2,
+                                        opacity: 0.6
+                                    }).addTo(map);
+                                    positionTrails[nodeId] = trail;
+                                }
+                            }
                             
                             // Create marker with different color for local node
                             const markerColor = node.isLocal ? 'green' : 'blue';
@@ -1201,7 +1655,9 @@ def get_web_ui_html() -> str:
                                 Node ID: ${node.nodeIdHex || node.nodeId}<br>
                                 SNR: ${node.snr || 'N/A'}<br>
                                 RSSI: ${node.rssi || 'N/A'}<br>
+                                ${node.position.altitude ? `Altitude: ${node.position.altitude}m<br>` : ''}
                                 ${node.isLocal ? '<span style="color: green;">Local Node</span>' : ''}
+                                ${nodePositions[nodeId] && nodePositions[nodeId].length > 1 ? `<br><small>Trail: ${nodePositions[nodeId].length} positions</small>` : ''}
                             `)
                             .addTo(map);
                             
@@ -1219,7 +1675,7 @@ def get_web_ui_html() -> str:
                     console.error('Error fitting bounds:', e);
                 }
             } else {
-                // Show message if no positions - but don't overlay on map
+                // Show message if no positions
                 const mapContainer = document.getElementById('map-container');
                 if (mapContainer) {
                     const existingMsg = mapContainer.querySelector('.no-positions');
@@ -1302,17 +1758,530 @@ def get_web_ui_html() -> str:
             content.innerHTML = html;
         }
         
+        // Activity Feed Functions
+        async function loadActivity() {
+            const content = document.getElementById('activity-content');
+            const data = await fetchAPI('activity');
+            
+            if (data.error) {
+                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let html = '';
+            if (data.messages && data.messages.length > 0) {
+                html = '<div style="max-height: 600px; overflow-y: auto;">';
+                data.messages.forEach(msg => {
+                    html += `
+                        <div class="bbs-message" style="margin-bottom: 12px;">
+                            <div class="bbs-message-header">
+                                <span><strong>${msg.fromName || 'Unknown'}</strong></span>
+                                <span>Ch ${msg.channel} | Int ${msg.interface} | ${msg.timestamp || ''}</span>
+                            </div>
+                            <div class="bbs-message-body">${msg.message || ''}</div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            } else {
+                html = '<p>No recent activity</p>';
+            }
+            
+            content.innerHTML = html;
+        }
+        
+        function filterActivity() {
+            const filter = document.getElementById('activity-filter').value.toLowerCase();
+            const messages = document.querySelectorAll('#activity-content .bbs-message');
+            messages.forEach(msg => {
+                const text = msg.textContent.toLowerCase();
+                msg.style.display = text.includes(filter) ? 'block' : 'none';
+            });
+        }
+        
+        // Node Details Functions
+        async function loadNodeDetails() {
+            const nodeId = document.getElementById('node-search').value.trim();
+            if (!nodeId) {
+                document.getElementById('node-details-content').innerHTML = '<div class="error">Please enter a Node ID</div>';
+                return;
+            }
+            
+            const content = document.getElementById('node-details-content');
+            content.innerHTML = '<div class="loading">Loading node details...</div>';
+            
+            const data = await fetchAPI(`node/${nodeId}`);
+            
+            if (data.error) {
+                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let html = '<div class="grid">';
+            html += `
+                <div class="card">
+                    <h3>Basic Information</h3>
+                    <div class="stat">
+                        <span>Node ID</span>
+                        <span><strong>${data.nodeIdHex || data.nodeId}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Short Name</span>
+                        <span><strong>${data.shortName || 'N/A'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Long Name</span>
+                        <span><strong>${data.longName || 'N/A'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Interface</span>
+                        <span><strong>${data.interface || 'N/A'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Status</span>
+                        <span><strong>${data.isLocal ? '<span class="badge success">Local Node</span>' : '<span class="badge info">Remote</span>'}</strong></span>
+                    </div>
+                </div>
+            `;
+            
+            if (data.position) {
+                html += `
+                    <div class="card">
+                        <h3>Position</h3>
+                        <div class="stat">
+                            <span>Latitude</span>
+                            <span><strong>${data.position.latitude || 'N/A'}</strong></span>
+                        </div>
+                        <div class="stat">
+                            <span>Longitude</span>
+                            <span><strong>${data.position.longitude || 'N/A'}</strong></span>
+                        </div>
+                        <div class="stat">
+                            <span>Altitude</span>
+                            <span><strong>${data.position.altitude || 0}m</strong></span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (data.deviceMetrics) {
+                html += `
+                    <div class="card">
+                        <h3>Device Metrics</h3>
+                        <div class="stat">
+                            <span>Battery</span>
+                            <span><strong>${data.deviceMetrics.batteryLevel !== undefined ? data.deviceMetrics.batteryLevel + '%' : 'N/A'}</strong></span>
+                        </div>
+                        <div class="stat">
+                            <span>Voltage</span>
+                            <span><strong>${data.deviceMetrics.voltage || 'N/A'}V</strong></span>
+                        </div>
+                        <div class="stat">
+                            <span>Uptime</span>
+                            <span><strong>${data.deviceMetrics.uptimeSeconds ? formatUptime(data.deviceMetrics.uptimeSeconds) : 'N/A'}</strong></span>
+                        </div>
+                        <div class="stat">
+                            <span>Channel Util</span>
+                            <span><strong>${data.deviceMetrics.channelUtilization || 0}%</strong></span>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += `
+                <div class="card">
+                    <h3>RF Statistics</h3>
+                    <div class="stat">
+                        <span>SNR</span>
+                        <span><strong>${data.snr || 'N/A'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>RSSI</span>
+                        <span><strong>${data.rssi || 'N/A'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Last Heard</span>
+                        <span><strong>${data.lastHeard ? new Date(data.lastHeard * 1000).toLocaleString() : 'Never'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Messages</span>
+                        <span><strong>${data.messageCount || 0}</strong></span>
+                    </div>
+                </div>
+            `;
+            
+            html += '</div>';
+            content.innerHTML = html;
+        }
+        
+        function formatUptime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds/60)}m`;
+            if (seconds < 86400) return `${Math.floor(seconds/3600)}h`;
+            return `${Math.floor(seconds/86400)}d`;
+        }
+        
+        // Statistics Functions
+        async function loadStatistics() {
+            const content = document.getElementById('statistics-content');
+            const timeframe = document.getElementById('stat-timeframe').value;
+            
+            // Get current telemetry data
+            const telData = await fetchAPI('telemetry');
+            const nodeData = await fetchAPI('nodes');
+            
+            if (telData.error || nodeData.error) {
+                content.innerHTML = `<div class="error">Error loading statistics</div>`;
+                return;
+            }
+            
+            let html = '<div style="margin-bottom: 30px;">';
+            
+            // Create charts container
+            html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">';
+            html += '<div><canvas id="packetsChart"></canvas></div>';
+            html += '<div><canvas id="nodesChart"></canvas></div>';
+            html += '</div>';
+            
+            // Summary stats
+            html += '<div class="grid">';
+            let totalTx = 0, totalRx = 0, totalNodes = 0;
+            for (const key in telData) {
+                if (key.startsWith('interface_')) {
+                    totalTx += telData[key].numPacketsTx || 0;
+                    totalRx += telData[key].numPacketsRx || 0;
+                }
+            }
+            for (const key in nodeData) {
+                if (nodeData[key].nodeCount !== undefined) {
+                    totalNodes += nodeData[key].nodeCount;
+                }
+            }
+            
+            html += `
+                <div class="card">
+                    <h3>Summary</h3>
+                    <div class="stat">
+                        <span>Total Packets TX</span>
+                        <span><strong>${totalTx.toLocaleString()}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Total Packets RX</span>
+                        <span><strong>${totalRx.toLocaleString()}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Total Nodes</span>
+                        <span><strong>${totalNodes}</strong></span>
+                    </div>
+                </div>
+            `;
+            html += '</div>';
+            html += '</div>';
+            
+            content.innerHTML = html;
+            
+            // Create charts (simplified - using current data)
+            setTimeout(() => {
+                if (typeof Chart !== 'undefined') {
+                    // Packets chart
+                    const packetsCtx = document.getElementById('packetsChart');
+                    if (packetsCtx) {
+                        new Chart(packetsCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: ['TX', 'RX'],
+                                datasets: [{
+                                    label: 'Packets',
+                                    data: [totalTx, totalRx],
+                                    backgroundColor: ['#667eea', '#10b981']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                plugins: {
+                                    title: { display: true, text: 'Packet Statistics' }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Nodes chart
+                    const nodesCtx = document.getElementById('nodesChart');
+                    if (nodesCtx) {
+                        const interfaceCounts = [];
+                        const interfaceLabels = [];
+                        for (const key in nodeData) {
+                            if (nodeData[key].interfaceNumber) {
+                                interfaceLabels.push(`Int ${nodeData[key].interfaceNumber}`);
+                                interfaceCounts.push(nodeData[key].nodeCount || 0);
+                            }
+                        }
+                        new Chart(nodesCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: interfaceLabels,
+                                datasets: [{
+                                    data: interfaceCounts,
+                                    backgroundColor: ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#3b82f6']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                plugins: {
+                                    title: { display: true, text: 'Nodes per Interface' }
+                                }
+                            }
+                        });
+                    }
+                }
+            }, 100);
+        }
+        
+        // Network Graph Functions
+        async function loadNetworkGraph() {
+            const content = document.getElementById('network-content');
+            const data = await fetchAPI('nodes');
+            
+            if (data.error) {
+                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let html = '<div class="grid">';
+            
+            // Build network connections (simplified visualization)
+            for (const key in data) {
+                if (data[key].interfaceNumber) {
+                    const intf = data[key];
+                    html += `
+                        <div class="card">
+                            <h3>Interface ${intf.interfaceNumber} Network</h3>
+                            <div style="margin-top: 15px;">
+                                <strong>Nodes: ${intf.nodeCount}</strong>
+                                <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
+                    `;
+                    
+                    intf.nodes.forEach(node => {
+                        const nodeName = node.shortName || node.longName || `Node ${node.nodeId}`;
+                        html += `
+                            <div style="padding: 8px; background: ${node.isLocal ? '#10b981' : '#3b82f6'}; color: white; border-radius: 6px; font-size: 12px;">
+                                ${nodeName}
+                            </div>
+                        `;
+                    });
+                    
+                    html += `
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            html += '</div>';
+            content.innerHTML = html;
+        }
+        
+        // System Health Functions
+        async function loadHealth() {
+            const content = document.getElementById('health-content');
+            const data = await fetchAPI('health');
+            
+            if (data.error) {
+                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let html = '<div class="grid">';
+            
+            html += `
+                <div class="card">
+                    <h3>System Status</h3>
+                    <div class="stat">
+                        <span>Uptime</span>
+                        <span><strong>${data.uptimeFormatted || 'Unknown'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>Memory Usage</span>
+                        <span><strong>${data.memory ? data.memory.used.toFixed(1) + ' MB (' + data.memory.percent.toFixed(1) + '%)' : 'N/A'}</strong></span>
+                    </div>
+                    <div class="stat">
+                        <span>CPU Usage</span>
+                        <span><strong>${data.cpu ? data.cpu.percent.toFixed(1) + '%' : 'N/A'}</strong></span>
+                    </div>
+                </div>
+            `;
+            
+            if (data.interfaces && data.interfaces.length > 0) {
+                html += '<div class="card"><h3>Interface Status</h3>';
+                data.interfaces.forEach(intf => {
+                    const statusColor = intf.status === 'connected' ? 'success' : 'danger';
+                    html += `
+                        <div class="stat">
+                            <span>Interface ${intf.number}</span>
+                            <span><strong><span class="badge ${statusColor}">${intf.status}</span></strong></span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            content.innerHTML = html;
+        }
+        
+        // Alerts Functions
+        async function loadAlerts() {
+            const content = document.getElementById('alerts-content');
+            // For now, show a placeholder - alerts would need to be tracked
+            content.innerHTML = `
+                <div class="card">
+                    <h3>Recent Alerts</h3>
+                    <p style="color: #6b7280;">Alert tracking coming soon. This will show FEMA alerts, weather warnings, system errors, and other notifications.</p>
+                </div>
+            `;
+        }
+        
+        // Management Functions
+        async function loadManagement() {
+            const content = document.getElementById('management-content');
+            const data = await fetchAPI('management');
+            
+            if (data.error) {
+                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                return;
+            }
+            
+            let html = '<div class="grid">';
+            
+            html += `
+                <div class="card">
+                    <h3>Banned Nodes</h3>
+                    <div style="margin-top: 10px;">
+                        ${data.bannedNodes && data.bannedNodes.length > 0 ? 
+                            data.bannedNodes.map(n => `<div class="badge danger" style="margin: 4px;">${n}</div>`).join('') : 
+                            '<p style="color: #6b7280;">No banned nodes</p>'}
+                    </div>
+                </div>
+            `;
+            
+            html += `
+                <div class="card">
+                    <h3>Admin Nodes</h3>
+                    <div style="margin-top: 10px;">
+                        ${data.adminNodes && data.adminNodes.length > 0 ? 
+                            data.adminNodes.map(n => `<div class="badge success" style="margin: 4px;">${n}</div>`).join('') : 
+                            '<p style="color: #6b7280;">No admin nodes configured</p>'}
+                    </div>
+                </div>
+            `;
+            
+            html += `
+                <div class="card">
+                    <h3>Auto-Banned Nodes</h3>
+                    <div style="margin-top: 10px;">
+                        ${data.autoBanned && data.autoBanned.length > 0 ? 
+                            data.autoBanned.map(n => `<div class="badge warning" style="margin: 4px;">${n}</div>`).join('') : 
+                            '<p style="color: #6b7280;">No auto-banned nodes</p>'}
+                    </div>
+                </div>
+            `;
+            
+            html += '</div>';
+            content.innerHTML = html;
+        }
+        
+        // Message Composer Functions
+        function updateComposerType() {
+            const type = document.getElementById('composer-type').value;
+            document.getElementById('composer-channel-group').style.display = type === 'channel' ? 'block' : 'none';
+            document.getElementById('composer-node-group').style.display = type === 'node' ? 'block' : 'none';
+        }
+        
+        async function sendMessage() {
+            const message = document.getElementById('composer-message').value.trim();
+            const type = document.getElementById('composer-type').value;
+            const interface = parseInt(document.getElementById('composer-interface').value);
+            const resultDiv = document.getElementById('composer-result');
+            
+            if (!message) {
+                resultDiv.innerHTML = '<div class="error">Please enter a message</div>';
+                return;
+            }
+            
+            let channel = 0;
+            let node_id = 0;
+            
+            if (type === 'channel') {
+                channel = parseInt(document.getElementById('composer-channel').value) || 0;
+            } else {
+                const nodeInput = document.getElementById('composer-node').value.trim();
+                if (!nodeInput) {
+                    resultDiv.innerHTML = '<div class="error">Please enter a Node ID</div>';
+                    return;
+                }
+                // Convert hex to decimal if needed
+                if (nodeInput.startsWith('!')) {
+                    node_id = parseInt(nodeInput.substring(1), 16);
+                } else {
+                    node_id = parseInt(nodeInput);
+                }
+                if (isNaN(node_id)) {
+                    resultDiv.innerHTML = '<div class="error">Invalid Node ID format</div>';
+                    return;
+                }
+            }
+            
+            resultDiv.innerHTML = '<div class="loading">Sending message...</div>';
+            
+            const result = await fetchAPI('send', 'POST', {
+                message: message,
+                channel: channel,
+                node_id: node_id,
+                interface: interface
+            });
+            
+            if (result.success) {
+                resultDiv.innerHTML = '<div class="success">Message sent successfully!</div>';
+                document.getElementById('composer-message').value = '';
+            } else {
+                resultDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to send message'}</div>`;
+            }
+        }
+        
+        // Export Functions
+        function exportData(type) {
+            fetchAPI(`export/${type}`).then(data => {
+                const jsonStr = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `mesh_${type}_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+        
         // Auto-refresh dashboard every 10 seconds
         function startAutoRefresh() {
             stopAutoRefresh();
             autoRefreshInterval = setInterval(() => {
                 const activeTab = document.querySelector('.tab-content.active').id;
-                if (activeTab === 'config') {
-                    // Don't auto-refresh config
+                if (activeTab === 'config' || activeTab === 'composer' || activeTab === 'node-details') {
+                    // Don't auto-refresh these tabs
                 } else if (activeTab === 'map') {
                     loadMapNodes();
                 } else if (activeTab === 'bbs') {
                     loadBBS();
+                } else if (activeTab === 'activity') {
+                    loadActivity();
+                } else if (activeTab === 'health') {
+                    loadHealth();
+                } else if (activeTab === 'management') {
+                    loadManagement();
+                } else if (activeTab === 'statistics') {
+                    loadStatistics();
                 } else {
                     refreshData();
                 }
