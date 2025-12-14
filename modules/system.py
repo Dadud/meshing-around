@@ -587,16 +587,17 @@ def build_channel_cache(force_refresh: bool = False):
         try:
             node = globals()[f'interface{i}'].getNode('^local')
             # Try to use the node-provided channel/hash table if available
-            ch_hash_table_raw = []
-            if hasattr(node, 'get_channels_with_hash'):
-                try:
-                    ch_hash_table_raw = node.get_channels_with_hash()
-                    #print(f"System: Device{i} Channel Hash Table: {ch_hash_table_raw}")
-                except Exception as e:
-                    logger.debug(f"System: Error getting channel hash table from Device{i}: {e}")
-            else:
+            try:
+                ch_hash_table_raw = node.get_channels_with_hash()
+                #print(f"System: Device{i} Channel Hash Table: {ch_hash_table_raw}")
+            except AttributeError:
                 # Method doesn't exist - meshtastic library may be outdated
                 logger.debug(f"System: get_channels_with_hash() not available for Device{i}. Update meshtastic: pip3 install --upgrade meshtastic[cli]")
+                ch_hash_table_raw = []
+            except Exception as e:
+                # Other error (node might be None, or method failed)
+                logger.debug(f"System: Error getting channel hash table from Device{i}: {e}")
+                ch_hash_table_raw = []
 
             channel_dict = {}
             # Use the hash table as the source of truth for channels
