@@ -746,7 +746,6 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             "enabled": auto_update_enabled
                         }
                     elif path_parts[1] == 'config':
-                    if path_parts[1] == 'config':
                         # Get configuration
                         config_data = read_config()
                         response = {"success": True, "config": config_data}
