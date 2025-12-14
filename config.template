@@ -56,6 +56,9 @@ cmdBang = False
 explicitCmd = True
 # list of favorite nodes numbers ex: 2813308004,4258675309 used by script/addFav.py
 favoriteNodeList = 
+# automatically kill processes that lock serial ports (default: True)
+# Set to False to disable automatic port lock recovery
+autoKillPortLock = True
 
 # motd is reset to this value on boot
 motd = Thanks for using MeshBOT! Have a good day!

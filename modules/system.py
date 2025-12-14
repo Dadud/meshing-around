@@ -8,6 +8,9 @@ import time
 import asyncio
 import random
 import base64
+import subprocess
+import os
+import re
 # not ideal but needed?
 import contextlib # for suppressing output on watchdog
 import io # for suppressing output on watchdog
@@ -331,6 +334,145 @@ if ble_count > 1:
     logger.critical(f"System: Multiple BLE interfaces detected. Only one BLE interface is allowed. Exiting")
     exit()
 
+def free_locked_port(port_path: str, auto_kill: bool = True):
+    """
+    Attempt to free a locked serial port by identifying and killing the process using it.
+    
+    Args:
+        port_path: Path to the serial port (e.g., /dev/ttyACM0)
+        auto_kill: If True, attempt to kill the process automatically
+    
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    if not auto_kill:
+        return False, "Auto-kill disabled in config"
+    
+    try:
+        # Try using lsof first (more detailed info)
+        lsof_result = subprocess.run(
+            ["lsof", port_path],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if lsof_result.returncode == 0 and lsof_result.stdout.strip():
+            # Parse lsof output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+            lines = lsof_result.stdout.strip().split('\n')
+            if len(lines) > 1:  # Skip header line
+                for line in lines[1:]:  # Skip header
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            pid = int(parts[1])
+                            command = parts[0].lower()
+                            
+                            # Only kill Python/meshtastic processes for safety
+                            safe_to_kill = any(keyword in command for keyword in ['python', 'meshtastic', 'mesh_bot', 'meshing'])
+                            
+                            if safe_to_kill:
+                                # Get process details
+                                try:
+                                    ps_result = subprocess.run(
+                                        ["ps", "-p", str(pid), "-o", "comm="],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=3
+                                    )
+                                    proc_name = ps_result.stdout.strip() if ps_result.returncode == 0 else "unknown"
+                                    
+                                    # Kill the process
+                                    kill_result = subprocess.run(
+                                        ["kill", "-9", str(pid)],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=5
+                                    )
+                                    
+                                    if kill_result.returncode == 0:
+                                        time.sleep(0.5)  # Brief wait for port to be released
+                                        return True, f"Freed port by killing process {pid} ({proc_name})"
+                                    else:
+                                        # Try with sudo if regular kill failed
+                                        sudo_kill = subprocess.run(
+                                            ["sudo", "kill", "-9", str(pid)],
+                                            capture_output=True,
+                                            text=True,
+                                            timeout=5
+                                        )
+                                        if sudo_kill.returncode == 0:
+                                            time.sleep(0.5)
+                                            return True, f"Freed port by killing process {pid} ({proc_name}) with sudo"
+                                        else:
+                                            return False, f"Failed to kill process {pid}: {sudo_kill.stderr.strip()}"
+                                except Exception as e:
+                                    return False, f"Error checking process {pid}: {str(e)}"
+                            else:
+                                return False, f"Port locked by {command} (PID {pid}) - not a Python/meshtastic process, skipping auto-kill"
+                        except (ValueError, IndexError):
+                            continue
+        
+        # Try fuser as fallback (simpler, less info)
+        fuser_result = subprocess.run(
+            ["fuser", port_path],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if fuser_result.returncode == 0:
+            # fuser outputs PIDs, try to kill them
+            pids = re.findall(r'\d+', fuser_result.stdout)
+            for pid_str in pids:
+                try:
+                    pid = int(pid_str)
+                    # Check if it's a safe process to kill
+                    ps_result = subprocess.run(
+                        ["ps", "-p", str(pid), "-o", "comm="],
+                        capture_output=True,
+                        text=True,
+                        timeout=3
+                    )
+                    if ps_result.returncode == 0:
+                        proc_name = ps_result.stdout.strip().lower()
+                        safe_to_kill = any(keyword in proc_name for keyword in ['python', 'meshtastic', 'mesh_bot', 'meshing'])
+                        
+                        if safe_to_kill:
+                            kill_result = subprocess.run(
+                                ["kill", "-9", str(pid)],
+                                capture_output=True,
+                                text=True,
+                                timeout=5
+                            )
+                            if kill_result.returncode == 0:
+                                time.sleep(0.5)
+                                return True, f"Freed port by killing process {pid} ({proc_name})"
+                            else:
+                                # Try sudo
+                                sudo_kill = subprocess.run(
+                                    ["sudo", "kill", "-9", str(pid)],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=5
+                                )
+                                if sudo_kill.returncode == 0:
+                                    time.sleep(0.5)
+                                    return True, f"Freed port by killing process {pid} ({proc_name}) with sudo"
+                except (ValueError, subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+                    continue
+        
+        return False, "Port appears free or unable to identify locking process"
+        
+    except FileNotFoundError:
+        # lsof or fuser not available
+        return False, "lsof/fuser not available - cannot auto-free port"
+    except subprocess.TimeoutExpired:
+        return False, "Timeout checking port status"
+    except Exception as e:
+        return False, f"Error freeing port: {str(e)}"
+
+
 # Initialize interfaces
 logger.debug(f"System: Initializing Interfaces")
 interface1 = interface2 = interface3 = interface4 = interface5 = interface6 = interface7 = interface8 = interface9 = None
@@ -345,24 +487,46 @@ for i in range(1, 10):
     try:
         if globals().get(f'interface{i}_enabled'):
             if interface_type == 'serial':
-                # Retry logic for serial port locks
+                # Retry logic for serial port locks with automatic recovery
                 port_path = globals().get(f'port{i}')
                 max_init_retries = 5
-                retry_delay = 3
+                retry_delay = 2
+                port_freed = False
+                
                 for retry in range(max_init_retries):
                     try:
                         globals()[f'interface{i}'] = meshtastic.serial_interface.SerialInterface(port_path)
+                        if port_freed:
+                            logger.info(f"System: Successfully opened port {port_path} after automatic recovery")
                         break  # Success, exit retry loop
                     except (OSError, IOError) as e:
                         if "Resource temporarily unavailable" in str(e) or "Could not exclusively lock" in str(e):
                             if retry < max_init_retries - 1:
-                                logger.warning(f"System: Port {port_path} is locked (attempt {retry + 1}/{max_init_retries}), waiting {retry_delay}s...")
-                                logger.warning(f"System: Try: sudo lsof {port_path} or sudo fuser -k {port_path} to free the port")
+                                logger.warning(f"System: Port {port_path} is locked (attempt {retry + 1}/{max_init_retries})")
+                                
+                                # Attempt automatic port recovery on first retry
+                                if retry == 0 and auto_kill_port_lock:
+                                    logger.info(f"System: Attempting to automatically free port {port_path}...")
+                                    freed, message = free_locked_port(port_path, auto_kill_port_lock)
+                                    if freed:
+                                        logger.info(f"System: {message}")
+                                        port_freed = True
+                                        # Brief wait for port to be fully released
+                                        time.sleep(1)
+                                        continue  # Retry immediately after freeing
+                                    else:
+                                        logger.warning(f"System: Auto-free failed: {message}")
+                                
+                                # Wait before retry
+                                logger.warning(f"System: Waiting {retry_delay}s before retry...")
                                 time.sleep(retry_delay)
-                                retry_delay += 2  # Increase delay with each retry
+                                retry_delay += 1  # Increase delay with each retry
                             else:
                                 logger.critical(f"System: Failed to lock port {port_path} after {max_init_retries} attempts")
-                                logger.critical(f"System: Port is likely in use by another process. Check with: sudo lsof {port_path}")
+                                logger.critical(f"System: Port is likely in use by another process.")
+                                logger.critical(f"System: Check with: sudo lsof {port_path} or sudo fuser -k {port_path}")
+                                if not auto_kill_port_lock:
+                                    logger.critical(f"System: Auto-kill is disabled. Enable 'autoKillPortLock = True' in config.ini to enable automatic recovery.")
                                 raise
                         else:
                             # Different error, re-raise it

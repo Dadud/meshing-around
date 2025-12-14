@@ -280,6 +280,7 @@ try:
     openWebUIURL = config['general'].get('openWebUIURL', 'http://localhost:3000') # default localhost:3000
     openWebUIAPIKey = config['general'].get('openWebUIAPIKey', '') # default empty
     dont_retry_disconnect = config['general'].getboolean('dont_retry_disconnect', False) # default False, retry on disconnect
+    auto_kill_port_lock = config['general'].getboolean('autoKillPortLock', True) # default True, automatically kill processes locking serial ports
     favoriteNodeList = config['general'].get('favoriteNodeList', '').split(',')
     enableEcho = config['general'].getboolean('enableEcho', False) # default False
     echoChannel = config['general'].getint('echoChannel', '9') # default 9, empty string to ignore
