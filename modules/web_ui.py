@@ -643,6 +643,7 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
     
     def do_GET(self):
         """Handle GET requests."""
+        global update_interval, auto_update_enabled
         parsed_path = urllib.parse.urlparse(self.path)
         path_parts = parsed_path.path.strip('/').split('/')
         
@@ -660,7 +661,6 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
             elif path_parts[0] == 'events':
                 # Server-Sent Events endpoint for real-time updates
-                global update_interval, auto_update_enabled
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/event-stream')
                 self.send_header('Cache-Control', 'no-cache')
@@ -716,7 +716,6 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if len(path_parts) > 1:
                     if path_parts[1] == 'update-settings':
                         # Update auto-update settings
-                        global update_interval, auto_update_enabled
                         content_length = int(self.headers.get('Content-Length', 0))
                         if content_length > 0:
                             post_data = self.rfile.read(content_length)
