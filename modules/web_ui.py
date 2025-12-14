@@ -609,6 +609,106 @@ def get_node_management() -> Dict[str, Any]:
         }
 
 
+def get_log_data(log_type: str = 'system', lines: int = 500, level_filter: str = None) -> Dict[str, Any]:
+    """
+    Get log data from log files.
+    
+    Args:
+        log_type: Type of log to retrieve ('system' or 'messages')
+        lines: Number of lines to retrieve (default: 500, max: 5000)
+        level_filter: Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    
+    Returns:
+        Dictionary with log data
+    """
+    try:
+        import glob
+        
+        # Determine log file path
+        if log_type == 'messages':
+            log_file = 'logs/messages.log'
+        else:
+            log_file = 'logs/meshbot.log'
+        
+        # Check if log file exists
+        if not os.path.exists(log_file):
+            # Try to find rotated log files
+            rotated_logs = glob.glob(f'{log_file}.*')
+            if rotated_logs:
+                # Use the most recent rotated log
+                rotated_logs.sort(reverse=True)
+                log_file = rotated_logs[0]
+            else:
+                return {
+                    "error": f"Log file not found: {log_file}",
+                    "logs": [],
+                    "count": 0
+                }
+        
+        # Read log file
+        log_lines = []
+        try:
+            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                # Read all lines and get the last N lines
+                all_lines = f.readlines()
+                log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        except Exception as e:
+            return {
+                "error": f"Error reading log file: {str(e)}",
+                "logs": [],
+                "count": 0
+            }
+        
+        # Parse and filter log lines
+        parsed_logs = []
+        for line in log_lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Parse log line format: "2025-12-14 22:00:55,922 |    DEBUG | System: message"
+            log_entry = {
+                "raw": line,
+                "timestamp": "",
+                "level": "",
+                "message": line
+            }
+            
+            # Try to parse structured log format
+            if ' | ' in line:
+                parts = line.split(' | ', 2)
+                if len(parts) >= 3:
+                    log_entry["timestamp"] = parts[0].strip()
+                    log_entry["level"] = parts[1].strip()
+                    log_entry["message"] = parts[2].strip()
+                elif len(parts) == 2:
+                    log_entry["timestamp"] = parts[0].strip()
+                    log_entry["message"] = parts[1].strip()
+            
+            # Apply level filter if specified
+            if level_filter and log_entry["level"].upper() != level_filter.upper():
+                continue
+            
+            parsed_logs.append(log_entry)
+        
+        return {
+            "success": True,
+            "logs": parsed_logs,
+            "count": len(parsed_logs),
+            "total_lines": len(log_lines),
+            "log_file": log_file,
+            "log_type": log_type
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Failed to get log data: {str(e)}",
+            "type": type(e).__name__,
+            "logs": [],
+            "count": 0
+        }
+
+
 def send_mesh_message(message: str, channel: int = 0, node_id: int = 0, interface: int = 1) -> Dict[str, Any]:
     """Send a message via the mesh network."""
     try:
@@ -864,6 +964,26 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             response = get_update_status()
                         else:
                             response = get_update_status()
+                    elif path_parts[1] == 'logs':
+                        # Get log data
+                        log_type = 'system'  # default to system logs
+                        lines = 500  # default to last 500 lines
+                        level_filter = None
+                        
+                        if parsed_path.query:
+                            query_params = urllib.parse.parse_qs(parsed_path.query)
+                            if 'type' in query_params:
+                                log_type = query_params['type'][0]
+                            if 'lines' in query_params:
+                                try:
+                                    lines = int(query_params['lines'][0])
+                                    lines = max(1, min(5000, lines))  # Limit between 1 and 5000
+                                except (ValueError, IndexError):
+                                    lines = 500
+                            if 'level' in query_params:
+                                level_filter = query_params['level'][0].upper()
+                        
+                        response = get_log_data(log_type=log_type, lines=lines, level_filter=level_filter)
                     else:
                         response = {"error": "Unknown API endpoint"}
                 else:
