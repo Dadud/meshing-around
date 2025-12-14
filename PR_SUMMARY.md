@@ -82,11 +82,7 @@ port = 8421
 
 ## Testing
 
-- Web UI tested on multiple browsers
-- MCP API tested with curl and web clients
-- Configuration saving/loading verified
-- Error handling tested for edge cases
-- Map functionality tested with multiple providers
+-Vibe coded for her pleasure. @ me in discord if its really broken
 
 ## Breaking Changes
 
