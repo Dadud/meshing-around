@@ -2482,12 +2482,16 @@ def get_web_ui_html() -> str:
             // Load log data
             try {
                 const levelParam = currentLogLevel !== 'all' ? `&level=${currentLogLevel}` : '';
-                const data = await fetchAPI(`logs?type=${currentLogType}&lines=${currentLogLines}${levelParam}`);
+                const data = await fetchAPI(`logs?type=${currentLogType}&lines=${currentLogLines}${levelParam}`, 'GET', null, 15000);
                 
                 if (!logViewer) return;
                 
                 if (data.error) {
-                    logViewer.innerHTML = `<div style="color: #f87171;">Error: ${data.error}</div>`;
+                    logViewer.innerHTML = `<div style="color: #f87171; padding: 20px; text-align: center;">
+                        <strong>Error loading logs:</strong><br>
+                        ${data.error}<br>
+                        <button class="btn" onclick="loadLogs()" style="margin-top: 10px; padding: 6px 12px;">Retry</button>
+                    </div>`;
                     return;
                 }
                 
