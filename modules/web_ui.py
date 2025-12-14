@@ -717,36 +717,45 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 
                 if len(path_parts) > 1:
                     if path_parts[1] == 'update-settings':
-                        # Update auto-update settings
-                        content_length = int(self.headers.get('Content-Length', 0))
-                        if content_length > 0:
-                            post_data = self.rfile.read(content_length)
-                            request_data = json.loads(post_data.decode('utf-8'))
-                            if 'interval' in request_data:
-                                update_interval = max(1, min(60, int(request_data['interval'])))
-                            if 'enabled' in request_data:
-                                auto_update_enabled = bool(request_data['enabled'])
+                        # Get or update auto-update settings
+                        if self.command == 'GET':
+                            # Return current settings
+                            response = {
+                                "success": True,
+                                "interval": update_interval,
+                                "enabled": auto_update_enabled
+                            }
+                        else:
+                            # Update settings (POST)
+                            content_length = int(self.headers.get('Content-Length', 0))
+                            if content_length > 0:
+                                post_data = self.rfile.read(content_length)
+                                request_data = json.loads(post_data.decode('utf-8'))
+                                if 'interval' in request_data:
+                                    update_interval = max(1, min(60, int(request_data['interval'])))
+                                if 'enabled' in request_data:
+                                    auto_update_enabled = bool(request_data['enabled'])
+                                
+                                # Broadcast settings change to all SSE clients
+                                with sse_lock:
+                                    for client in sse_clients[:]:
+                                        try:
+                                            settings_data = {
+                                                'type': 'settings',
+                                                'interval': update_interval,
+                                                'enabled': auto_update_enabled
+                                            }
+                                            client.write(f"data: {json.dumps(settings_data)}\n\n".encode('utf-8'))
+                                            client.flush()
+                                        except:
+                                            if client in sse_clients:
+                                                sse_clients.remove(client)
                             
-                            # Broadcast settings change to all SSE clients
-                            with sse_lock:
-                                for client in sse_clients[:]:
-                                    try:
-                                        settings_data = {
-                                            'type': 'settings',
-                                            'interval': update_interval,
-                                            'enabled': auto_update_enabled
-                                        }
-                                        client.write(f"data: {json.dumps(settings_data)}\n\n".encode('utf-8'))
-                                        client.flush()
-                                    except:
-                                        if client in sse_clients:
-                                            sse_clients.remove(client)
-                        
-                        response = {
-                            "success": True,
-                            "interval": update_interval,
-                            "enabled": auto_update_enabled
-                        }
+                            response = {
+                                "success": True,
+                                "interval": update_interval,
+                                "enabled": auto_update_enabled
+                            }
                     elif path_parts[1] == 'config':
                         # Get configuration
                         config_data = read_config()
