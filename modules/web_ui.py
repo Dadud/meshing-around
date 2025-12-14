@@ -1976,6 +1976,9 @@ def get_web_ui_html() -> str:
             content.innerHTML = html;
         }
         
+        // Store restart message globally so it persists across reloads
+        let pendingRestartMessage = null;
+        
         async function loadUpdateStatus() {
             const content = document.getElementById('update-content');
             try {
@@ -1989,7 +1992,19 @@ def get_web_ui_html() -> str:
                 const canUpdate = data.can_update || false;
                 const updateAvailable = data.update_available || false;
                 
-                let html = '<div class="config-section">';
+                let html = '';
+                
+                // Show persistent restart message if one exists
+                if (pendingRestartMessage) {
+                    html += '<div style="background: #fef3c7; padding: 16px; border-radius: 8px; border: 2px solid #f59e0b; margin-bottom: 24px;">';
+                    html += '<p style="margin: 0; font-weight: 600; color: #92400e; font-size: 16px;">🔄 Restart Required</p>';
+                    html += `<p style="margin: 8px 0 0 0; color: #78350f; font-size: 14px;">${pendingRestartMessage}</p>`;
+                    html += '<p style="margin: 8px 0 0 0; color: #78350f; font-size: 13px;">The bot needs to be restarted to apply the latest updates. The restart message will disappear once you refresh the page after restarting.</p>';
+                    html += '<button class="btn" onclick="pendingRestartMessage = null; loadUpdateStatus();" style="margin-top: 12px; padding: 6px 12px; font-size: 13px;">Dismiss</button>';
+                    html += '</div>';
+                }
+                
+                html += '<div class="config-section">';
                 html += '<h3>Repository Information</h3>';
                 
                 if (!gitInfo.is_git_repo) {
@@ -2114,15 +2129,18 @@ def get_web_ui_html() -> str:
                         html += `<p style="margin-top: 8px; color: #047857;">New commit: <code>${data.new_commit}</code></p>`;
                     }
                     if (data.restart_required) {
+                        // Store restart message globally so it persists
+                        pendingRestartMessage = data.restart_message || 'Please restart the bot to apply changes.';
                         html += '<div style="margin-top: 12px; padding: 12px; background: #fef3c7; border-radius: 6px; border: 1px solid #f59e0b;">';
                         html += '<p style="margin: 0; font-weight: 600; color: #92400e;">🔄 Restart Required</p>';
-                        html += `<p style="margin: 8px 0 0 0; color: #78350f; font-size: 14px;">${data.restart_message || 'Please restart the bot to apply changes.'}</p>`;
+                        html += `<p style="margin: 8px 0 0 0; color: #78350f; font-size: 14px;">${pendingRestartMessage}</p>`;
+                        html += '<p style="margin: 8px 0 0 0; color: #78350f; font-size: 13px;"><strong>This message will persist until you dismiss it or restart the bot.</strong></p>';
                         html += '</div>';
                     }
                     html += '</div>';
                     content.innerHTML = html;
                     
-                    // Reload status after a moment
+                    // Reload status after a moment (but keep restart message)
                     setTimeout(() => {
                         loadUpdateStatus();
                     }, 2000);
