@@ -844,7 +844,6 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             # Parse limit from query string
                             limit = 20
                             if parsed_path.query:
-                                import urllib.parse
                                 query_params = urllib.parse.parse_qs(parsed_path.query)
                                 if 'limit' in query_params:
                                     try:
