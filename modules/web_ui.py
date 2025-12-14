@@ -1011,19 +1011,49 @@ def get_web_ui_html() -> str:
         }
         .config-section {
             margin-bottom: 32px;
-            padding: 24px;
             background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
             border-radius: 12px;
             border: 1px solid rgba(226, 232, 240, 0.8);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+        .config-section-header {
+            padding: 20px 24px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.2s;
+        }
+        .config-section-header:hover {
+            background: rgba(99, 102, 241, 0.05);
         }
         .config-section h3 {
             color: var(--primary);
-            margin-bottom: 20px;
-            border-bottom: 2px solid var(--primary);
-            padding-bottom: 12px;
+            margin: 0;
             font-size: 20px;
             font-weight: 700;
+            flex: 1;
+        }
+        .config-section-toggle {
+            font-size: 18px;
+            color: var(--primary);
+            transition: transform 0.3s;
+            margin-left: 12px;
+        }
+        .config-section.collapsed .config-section-toggle {
+            transform: rotate(-90deg);
+        }
+        .config-section-content {
+            padding: 0 24px 24px 24px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+        }
+        .config-section:not(.collapsed) .config-section-content {
+            max-height: 10000px;
+            padding: 0 24px 24px 24px;
         }
         .form-group {
             margin-bottom: 20px;
@@ -1675,7 +1705,13 @@ def get_web_ui_html() -> str:
                 const groupSections = sections.filter(s => configData[s]);
                 if (groupSections.length === 0) continue;
                 
-                html += `<div class="config-section"><h3>${groupName}</h3>`;
+                const sectionId = `config-group-${groupName.replace(/\s+/g, '-').toLowerCase()}`;
+                html += `<div class="config-section collapsed" id="${sectionId}">`;
+                html += `<div class="config-section-header" onclick="toggleConfigSection('${sectionId}')">`;
+                html += `<h3>${groupName}</h3>`;
+                html += `<span class="config-section-toggle">▼</span>`;
+                html += `</div>`;
+                html += `<div class="config-section-content">`;
                 
                 for (const section of groupSections) {
                     const items = configData[section];
@@ -1716,7 +1752,7 @@ def get_web_ui_html() -> str:
                     }
                 }
                 
-                html += `</div>`;
+                html += `</div></div>`;
             }
             
             // Handle any remaining sections not in groups
@@ -1724,7 +1760,13 @@ def get_web_ui_html() -> str:
             for (const [section, items] of Object.entries(configData)) {
                 if (handledSections.has(section)) continue;
                 
-                html += `<div class="config-section"><h3>${formatSectionName(section)}</h3>`;
+                const sectionId = `config-section-${section.replace(/\s+/g, '-').toLowerCase()}`;
+                html += `<div class="config-section collapsed" id="${sectionId}">`;
+                html += `<div class="config-section-header" onclick="toggleConfigSection('${sectionId}')">`;
+                html += `<h3>${formatSectionName(section)}</h3>`;
+                html += `<span class="config-section-toggle">▼</span>`;
+                html += `</div>`;
+                html += `<div class="config-section-content">`;
                 for (const [key, value] of Object.entries(items)) {
                     const id = `${section}_${key}`;
                     const isBool = value === 'True' || value === 'False' || value === 'true' || value === 'false';
@@ -1748,10 +1790,17 @@ def get_web_ui_html() -> str:
                     
                     html += `</div>`;
                 }
-                html += `</div>`;
+                html += `</div></div>`;
             }
             
             content.innerHTML = html;
+        }
+        
+        function toggleConfigSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.toggle('collapsed');
+            }
         }
         
         function updateConfigValue(section, key, value) {
