@@ -2380,59 +2380,73 @@ def get_web_ui_html() -> str:
             const content = document.getElementById('logs-content');
             if (!content) return;
             
-            // Build controls HTML
-            let html = '<div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">';
-            html += '<div class="form-group" style="margin: 0;">';
-            html += '<label for="log-type" style="margin-right: 8px;">Log Type:</label>';
-            html += `<select id="log-type" onchange="currentLogType = this.value; loadLogs();" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db;">`;
-            html += `<option value="system" ${currentLogType === 'system' ? 'selected' : ''}>System Logs</option>`;
-            html += `<option value="messages" ${currentLogType === 'messages' ? 'selected' : ''}>Message Logs</option>`;
-            html += '</select>';
-            html += '</div>';
-            
-            html += '<div class="form-group" style="margin: 0;">';
-            html += '<label for="log-level" style="margin-right: 8px;">Level:</label>';
-            html += `<select id="log-level" onchange="currentLogLevel = this.value; loadLogs();" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db;">`;
-            html += '<option value="all">All Levels</option>';
-            html += '<option value="DEBUG">DEBUG</option>';
-            html += '<option value="INFO">INFO</option>';
-            html += '<option value="WARNING">WARNING</option>';
-            html += '<option value="ERROR">ERROR</option>';
-            html += '<option value="CRITICAL">CRITICAL</option>';
-            html += '</select>';
-            html += '</div>';
-            
-            html += '<div class="form-group" style="margin: 0;">';
-            html += '<label for="log-lines" style="margin-right: 8px;">Lines:</label>';
-            html += `<input type="number" id="log-lines" value="${currentLogLines}" min="50" max="5000" step="50" onchange="currentLogLines = parseInt(this.value) || 500; loadLogs();" style="width: 100px; padding: 6px; border-radius: 6px; border: 1px solid #d1d5db;">`;
-            html += '</div>';
-            
-            html += '<div class="form-group" style="margin: 0;">';
-            html += `<label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="log-autoscroll" ${logAutoScroll ? 'checked' : ''} onchange="logAutoScroll = this.checked;" style="margin-right: 6px;">Auto-scroll</label>`;
-            html += '</div>';
-            
-            html += '<button class="btn" onclick="loadLogs()" style="padding: 6px 12px;">🔄 Refresh</button>';
-            html += '<button class="btn" onclick="clearLogs()" style="padding: 6px 12px;">🗑️ Clear</button>';
-            html += '</div>';
-            
-            html += '<div id="log-viewer" style="background: #1e293b; color: #e2e8f0; font-family: "Courier New", monospace; font-size: 13px; padding: 16px; border-radius: 8px; max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5;">';
-            html += '<div class="loading" style="color: #94a3b8;">Loading logs...</div>';
-            html += '</div>';
-            
-            content.innerHTML = html;
-            
-            // Set log level filter if changed
-            const levelSelect = document.getElementById('log-level');
-            if (levelSelect && currentLogLevel !== 'all') {
-                levelSelect.value = currentLogLevel;
+            // Check if controls already exist - if not, build them
+            let logViewer = document.getElementById('log-viewer');
+            if (!logViewer) {
+                // Build controls HTML (only on first load)
+                let html = '<div id="log-controls" style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">';
+                html += '<div class="form-group" style="margin: 0;">';
+                html += '<label for="log-type" style="margin-right: 8px;">Log Type:</label>';
+                html += `<select id="log-type" onchange="currentLogType = this.value; loadLogs();" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db;">`;
+                html += `<option value="system" ${currentLogType === 'system' ? 'selected' : ''}>System Logs</option>`;
+                html += `<option value="messages" ${currentLogType === 'messages' ? 'selected' : ''}>Message Logs</option>`;
+                html += '</select>';
+                html += '</div>';
+                
+                html += '<div class="form-group" style="margin: 0;">';
+                html += '<label for="log-level" style="margin-right: 8px;">Level:</label>';
+                html += `<select id="log-level" onchange="currentLogLevel = this.value; loadLogs();" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db;">`;
+                html += '<option value="all">All Levels</option>';
+                html += '<option value="DEBUG">DEBUG</option>';
+                html += '<option value="INFO">INFO</option>';
+                html += '<option value="WARNING">WARNING</option>';
+                html += '<option value="ERROR">ERROR</option>';
+                html += '<option value="CRITICAL">CRITICAL</option>';
+                html += '</select>';
+                html += '</div>';
+                
+                html += '<div class="form-group" style="margin: 0;">';
+                html += '<label for="log-lines" style="margin-right: 8px;">Lines:</label>';
+                html += `<input type="number" id="log-lines" value="${currentLogLines}" min="50" max="5000" step="50" onchange="currentLogLines = parseInt(this.value) || 500; loadLogs();" style="width: 100px; padding: 6px; border-radius: 6px; border: 1px solid #d1d5db;">`;
+                html += '</div>';
+                
+                html += '<div class="form-group" style="margin: 0;">';
+                html += `<label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="log-autoscroll" ${logAutoScroll ? 'checked' : ''} onchange="logAutoScroll = this.checked;" style="margin-right: 6px;">Auto-scroll</label>`;
+                html += '</div>';
+                
+                html += '<button class="btn" onclick="loadLogs()" style="padding: 6px 12px;">🔄 Refresh</button>';
+                html += '<button class="btn" onclick="clearLogs()" style="padding: 6px 12px;">🗑️ Clear</button>';
+                html += '</div>';
+                
+                html += '<div id="log-viewer" style="background: #1e293b; color: #e2e8f0; font-family: "Courier New", monospace; font-size: 13px; padding: 16px; border-radius: 8px; max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5;">';
+                html += '<div class="loading" style="color: #94a3b8;">Loading logs...</div>';
+                html += '</div>';
+                
+                html += '<div id="log-count" style="margin-top: 12px; color: #94a3b8; font-size: 12px;"></div>';
+                
+                content.innerHTML = html;
+                logViewer = document.getElementById('log-viewer');
+            } else {
+                // Just update the loading indicator
+                logViewer.innerHTML = '<div class="loading" style="color: #94a3b8;">Loading logs...</div>';
             }
+            
+            // Update controls with current values
+            const typeSelect = document.getElementById('log-type');
+            const levelSelect = document.getElementById('log-level');
+            const linesInput = document.getElementById('log-lines');
+            const autoscrollCheck = document.getElementById('log-autoscroll');
+            
+            if (typeSelect) typeSelect.value = currentLogType;
+            if (levelSelect) levelSelect.value = currentLogLevel;
+            if (linesInput) linesInput.value = currentLogLines;
+            if (autoscrollCheck) autoscrollCheck.checked = logAutoScroll;
             
             // Load log data
             try {
                 const levelParam = currentLogLevel !== 'all' ? `&level=${currentLogLevel}` : '';
                 const data = await fetchAPI(`logs?type=${currentLogType}&lines=${currentLogLines}${levelParam}`);
                 
-                const logViewer = document.getElementById('log-viewer');
                 if (!logViewer) return;
                 
                 if (data.error) {
@@ -2469,32 +2483,26 @@ def get_web_ui_html() -> str:
                     
                     // Auto-scroll to bottom if enabled
                     if (logAutoScroll) {
-                        logViewer.scrollTop = logViewer.scrollHeight;
+                        setTimeout(() => {
+                            if (logViewer) {
+                                logViewer.scrollTop = logViewer.scrollHeight;
+                            }
+                        }, 100);
                     }
                 } else {
                     logViewer.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 40px;">No log entries found</div>';
                 }
                 
-                // Update log count display
-                const logCount = document.createElement('div');
-                logCount.style.cssText = 'margin-top: 12px; color: #94a3b8; font-size: 12px;';
-                logCount.textContent = `Showing ${data.count} of ${data.total_lines || 0} lines from ${data.log_file || 'log file'}`;
-                content.appendChild(logCount);
+                // Update log count display (replace, don't append)
+                const logCount = document.getElementById('log-count');
+                if (logCount) {
+                    logCount.textContent = `Showing ${data.count} of ${data.total_lines || 0} lines from ${data.log_file || 'log file'}`;
+                }
                 
             } catch (error) {
-                const logViewer = document.getElementById('log-viewer');
                 if (logViewer) {
                     logViewer.innerHTML = `<div style="color: #f87171;">Error loading logs: ${error.message}</div>`;
                 }
-            }
-            
-            // Start auto-refresh if not already started
-            if (!logRefreshInterval) {
-                logRefreshInterval = setInterval(() => {
-                    if (document.querySelector('#logs.tab-content.active')) {
-                        loadLogs();
-                    }
-                }, 5000); // Refresh every 5 seconds
             }
         }
         
@@ -3565,7 +3573,11 @@ def get_web_ui_html() -> str:
                 } else if (activeTab === 'statistics') {
                     loadStatistics();
                 } else if (activeTab === 'logs') {
-                    loadLogs();
+                    // Only update log content, don't rebuild controls
+                    const logViewer = document.getElementById('log-viewer');
+                    if (logViewer) {
+                        loadLogs();
+                    }
                 } else {
                     refreshData();
                 }
