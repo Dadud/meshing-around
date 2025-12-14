@@ -228,8 +228,124 @@ def perform_update(dry_run: bool = False, reset_on_conflict: bool = False) -> Di
         if commit_result.returncode == 0:
             result["new_commit"] = commit_result.stdout.strip()[:7]
         
+        # If update was successful, attempt to restart the bot
+        if result["success"] and result["updated"]:
+            result["restart_required"] = True
+            result["restart_message"] = restart_bot()
+        
     except subprocess.TimeoutExpired:
         result["error"] = "Update operation timed out"
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return result
+
+
+def restart_bot() -> str:
+    """
+    Attempt to restart the bot using systemd if available, otherwise provide instructions.
+    
+    Returns:
+        Message about restart status
+    """
+    try:
+        # Check if running as systemd service
+        service_name = "mesh_bot"  # Common service name
+        check_result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", service_name],
+            capture_output=True,
+            timeout=5
+        )
+        
+        if check_result.returncode == 0:
+            # Service is active, restart it
+            restart_result = subprocess.run(
+                ["sudo", "systemctl", "restart", service_name],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if restart_result.returncode == 0:
+                return f"Bot restarted via systemd service '{service_name}'"
+            else:
+                return f"Failed to restart via systemd: {restart_result.stderr.strip()}. You may need to restart manually."
+        else:
+            # Try other common service names
+            for alt_name in ["meshing-around", "meshtastic-bot"]:
+                check_alt = subprocess.run(
+                    ["systemctl", "is-active", "--quiet", alt_name],
+                    capture_output=True,
+                    timeout=5
+                )
+                if check_alt.returncode == 0:
+                    restart_result = subprocess.run(
+                        ["sudo", "systemctl", "restart", alt_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if restart_result.returncode == 0:
+                        return f"Bot restarted via systemd service '{alt_name}'"
+            
+            # Not running as systemd service
+            return "Bot is not running as a systemd service. Please restart manually: 'sudo systemctl restart mesh_bot' or restart your bot process."
+            
+    except FileNotFoundError:
+        return "systemctl not found. Please restart the bot manually."
+    except subprocess.TimeoutExpired:
+        return "Restart check timed out. Please restart the bot manually."
+    except Exception as e:
+        return f"Could not determine restart method: {str(e)}. Please restart the bot manually."
+
+
+def get_changelog(limit: int = 20) -> Dict[str, Any]:
+    """
+    Get recent commit history (changelog).
+    
+    Args:
+        limit: Maximum number of commits to return
+    
+    Returns:
+        Dictionary with changelog data
+    """
+    result = {
+        "success": False,
+        "commits": [],
+        "error": None
+    }
+    
+    try:
+        repo_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Get commit log
+        log_result = subprocess.run(
+            ["git", "log", f"--max-count={limit}", "--pretty=format:%h|%an|%ad|%s", "--date=short"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if log_result.returncode == 0:
+            commits = []
+            for line in log_result.stdout.strip().split('\n'):
+                if not line:
+                    continue
+                parts = line.split('|', 3)
+                if len(parts) >= 4:
+                    commits.append({
+                        "hash": parts[0],
+                        "author": parts[1],
+                        "date": parts[2],
+                        "message": parts[3]
+                    })
+            result["commits"] = commits
+            result["success"] = True
+        else:
+            result["error"] = f"Failed to get changelog: {log_result.stderr}"
+            
+    except subprocess.TimeoutExpired:
+        result["error"] = "Changelog operation timed out"
     except Exception as e:
         result["error"] = str(e)
     

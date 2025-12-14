@@ -29,7 +29,7 @@ os.makedirs(CONFIG_BACKUP_DIR, exist_ok=True)
 sse_clients = []
 sse_lock = threading.Lock()
 update_interval = 5  # Default 5 seconds
-auto_update_enabled = True
+auto_update_enabled = False  # Disabled by default - must be explicitly enabled
 
 
 def backup_config():
@@ -835,9 +835,21 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             response = {"error": "Unknown export type"}
                     elif path_parts[1] == 'update':
                         # Update status and operations
-                        from modules.updater import get_update_status, perform_update, check_for_updates
+                        from modules.updater import get_update_status, perform_update, check_for_updates, get_changelog
                         if len(path_parts) > 2 and path_parts[2] == 'check':
                             response = check_for_updates()
+                        elif len(path_parts) > 2 and path_parts[2] == 'changelog':
+                            # Parse limit from query string
+                            limit = 20
+                            if parsed_path.query:
+                                import urllib.parse
+                                query_params = urllib.parse.parse_qs(parsed_path.query)
+                                if 'limit' in query_params:
+                                    try:
+                                        limit = int(query_params['limit'][0])
+                                    except (ValueError, IndexError):
+                                        limit = 20
+                            response = get_changelog(limit=limit)
                         elif len(path_parts) > 2 and path_parts[2] == 'status':
                             response = get_update_status()
                         else:
@@ -1644,7 +1656,8 @@ def get_web_ui_html() -> str:
         let autoRefreshInterval = null;
         let map = null;
         let mapMarkers = [];
-        let mapInitialized = false; // Track if map has been initialized (to preserve zoom on updates)
+        let mapInitialized = false; // Track if map has been initialized
+        let mapBoundsFitted = false; // Track if bounds have been fitted (to preserve zoom on updates)
         
         async function fetchAPI(endpoint, method='GET', data=null) {
             try {
@@ -1985,7 +1998,17 @@ def get_web_ui_html() -> str:
                 }
                 
                 html += '</div>';
+                
+                // Add changelog section
+                html += '<div class="config-section" style="margin-top: 32px;">';
+                html += '<h3>📋 Recent Changelog</h3>';
+                html += '<div id="changelog-content" class="loading">Loading changelog...</div>';
+                html += '</div>';
+                
                 content.innerHTML = html;
+                
+                // Load changelog
+                loadChangelog();
             } catch (error) {
                 content.innerHTML = `<div class="error">Error loading update status: ${error.message}</div>`;
             }
@@ -2029,6 +2052,12 @@ def get_web_ui_html() -> str:
                     if (data.new_commit) {
                         html += `<p style="margin-top: 8px; color: #047857;">New commit: <code>${data.new_commit}</code></p>`;
                     }
+                    if (data.restart_required) {
+                        html += '<div style="margin-top: 12px; padding: 12px; background: #fef3c7; border-radius: 6px; border: 1px solid #f59e0b;">';
+                        html += '<p style="margin: 0; font-weight: 600; color: #92400e;">🔄 Restart Required</p>';
+                        html += `<p style="margin: 8px 0 0 0; color: #78350f; font-size: 14px;">${data.restart_message || 'Please restart the bot to apply changes.'}</p>`;
+                        html += '</div>';
+                    }
                     html += '</div>';
                     content.innerHTML = html;
                     
@@ -2041,6 +2070,39 @@ def get_web_ui_html() -> str:
                 }
             } catch (error) {
                 content.innerHTML = `<div class="error">Error performing update: ${error.message}</div>`;
+            }
+        }
+        
+        async function loadChangelog() {
+            const content = document.getElementById('changelog-content');
+            if (!content) return;
+            
+            try {
+                const data = await fetchAPI('update/changelog?limit=20');
+                if (data.error) {
+                    content.innerHTML = `<div class="error">Error loading changelog: ${data.error}</div>`;
+                    return;
+                }
+                
+                if (data.commits && data.commits.length > 0) {
+                    let html = '<div style="max-height: 400px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;">';
+                    data.commits.forEach(commit => {
+                        html += '<div style="padding: 12px; border-bottom: 1px solid #e5e7eb; margin-bottom: 8px;">';
+                        html += `<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">`;
+                        html += `<code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 12px;">${commit.hash}</code>`;
+                        html += `<span style="color: #6b7280; font-size: 12px;">${commit.date}</span>`;
+                        html += `</div>`;
+                        html += `<p style="margin: 4px 0; font-weight: 500; color: #1f2937;">${commit.message}</p>`;
+                        html += `<p style="margin: 0; color: #6b7280; font-size: 12px;">by ${commit.author}</p>`;
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                    content.innerHTML = html;
+                } else {
+                    content.innerHTML = '<div style="color: #6b7280; padding: 20px; text-align: center;">No commits found</div>';
+                }
+            } catch (error) {
+                content.innerHTML = `<div class="error">Error loading changelog: ${error.message}</div>`;
             }
         }
         
@@ -2342,7 +2404,8 @@ def get_web_ui_html() -> str:
                         }).addTo(map);
                         
                         mapMarkers = [];
-                        mapInitialized = false; // Mark as not yet initialized (will fit bounds on first load)
+                        mapInitialized = true; // Map is now initialized
+                        mapBoundsFitted = false; // Bounds not yet fitted (will fit on first load)
                         loadMapNodes();
                     } catch (e) {
                         console.error('Error initializing map:', e);
@@ -2448,16 +2511,16 @@ def get_web_ui_html() -> str:
                 }
             }
             
-            // Only fit bounds on first initialization, preserve zoom/center on updates
+            // Only fit bounds on first load, preserve zoom/center on subsequent updates
             if (hasPositions && bounds.length > 0) {
-                if (!mapInitialized) {
+                if (!mapBoundsFitted) {
                     // First load - fit bounds to show all nodes
                     try {
                         map.fitBounds(bounds, { padding: [20, 20] });
-                        mapInitialized = true;
+                        mapBoundsFitted = true; // Mark that we've fitted bounds once
                     } catch (e) {
                         console.error('Error fitting bounds:', e);
-                        mapInitialized = true;
+                        mapBoundsFitted = true; // Mark as fitted even on error to prevent retries
                     }
                 }
                 // On subsequent updates, don't change the view - just update markers
