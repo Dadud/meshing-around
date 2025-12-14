@@ -1439,12 +1439,7 @@ def get_web_ui_html() -> str:
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <script>
-        const API_BASE = window.location.origin;
-        let configData = {};
-        let autoRefreshInterval = null;
-        let map = null;
-        let mapMarkers = [];
-        
+        // Define showTab first to ensure it's available
         function showTab(tabName, buttonElement) {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1501,6 +1496,13 @@ def get_web_ui_html() -> str:
             }
         }
         
+        // Initialize variables
+        const API_BASE = window.location.origin;
+        let configData = {};
+        let autoRefreshInterval = null;
+        let map = null;
+        let mapMarkers = [];
+        
         async function fetchAPI(endpoint, method='GET', data=null) {
             try {
                 const options = {
@@ -1532,7 +1534,7 @@ def get_web_ui_html() -> str:
             'general': {
                 'respond_by_dm_only': { label: 'Only Respond to Direct Messages', desc: 'If enabled, bot only responds to DMs, not channel messages' },
                 'defaultChannel': { label: 'Default Channel', desc: 'Main public channel number (usually 0)' },
-                'ignoreDefaultChannel': { label: 'Ignore Default Channel', desc: 'Don\'t respond to messages on the default channel' },
+                'ignoreDefaultChannel': { label: 'Ignore Default Channel', desc: 'Do not respond to messages on the default channel' },
                 'ignoreChannels': { label: 'Channels to Ignore', desc: 'Comma-separated list of channel numbers to ignore (e.g., 4,5)' },
                 'explicitCmd': { label: 'Require Explicit Commands', desc: 'Only process messages that start with a command word' },
                 'cmdBang': { label: 'Require ! Before Commands', desc: 'Commands must start with ! (e.g., !ping)' },
