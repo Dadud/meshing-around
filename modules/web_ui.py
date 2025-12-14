@@ -1272,21 +1272,21 @@ def get_web_ui_html() -> str:
         </header>
         
         <div class="tabs">
-            <button class="tab active" onclick="showTab('dashboard')">📊 Dashboard</button>
-            <button class="tab" onclick="showTab('activity')">📨 Activity</button>
-            <button class="tab" onclick="showTab('map')">🗺️ Node Map</button>
-            <button class="tab" onclick="showTab('nodes')">📡 Nodes</button>
-            <button class="tab" onclick="showTab('node-details')">🔍 Node Details</button>
-            <button class="tab" onclick="showTab('telemetry')">📈 RF Telemetry</button>
-            <button class="tab" onclick="showTab('statistics')">📊 Statistics</button>
-            <button class="tab" onclick="showTab('network')">🌐 Network</button>
-            <button class="tab" onclick="showTab('health')">💚 Health</button>
-            <button class="tab" onclick="showTab('alerts')">🚨 Alerts</button>
-            <button class="tab" onclick="showTab('bbs')">💬 BBS</button>
-            <button class="tab" onclick="showTab('composer')">✉️ Send</button>
-            <button class="tab" onclick="showTab('management')">👥 Management</button>
-            <button class="tab" onclick="showTab('leaderboard')">🏆 Leaderboard</button>
-            <button class="tab" onclick="showTab('config')">⚙️ Config</button>
+            <button class="tab active" onclick="showTab('dashboard', event)">📊 Dashboard</button>
+            <button class="tab" onclick="showTab('activity', event)">📨 Activity</button>
+            <button class="tab" onclick="showTab('map', event)">🗺️ Node Map</button>
+            <button class="tab" onclick="showTab('nodes', event)">📡 Nodes</button>
+            <button class="tab" onclick="showTab('node-details', event)">🔍 Node Details</button>
+            <button class="tab" onclick="showTab('telemetry', event)">📈 RF Telemetry</button>
+            <button class="tab" onclick="showTab('statistics', event)">📊 Statistics</button>
+            <button class="tab" onclick="showTab('network', event)">🌐 Network</button>
+            <button class="tab" onclick="showTab('health', event)">💚 Health</button>
+            <button class="tab" onclick="showTab('alerts', event)">🚨 Alerts</button>
+            <button class="tab" onclick="showTab('bbs', event)">💬 BBS</button>
+            <button class="tab" onclick="showTab('composer', event)">✉️ Send</button>
+            <button class="tab" onclick="showTab('management', event)">👥 Management</button>
+            <button class="tab" onclick="showTab('leaderboard', event)">🏆 Leaderboard</button>
+            <button class="tab" onclick="showTab('config', event)">⚙️ Config</button>
         </div>
         
         <div class="content">
@@ -1445,33 +1445,60 @@ def get_web_ui_html() -> str:
         let map = null;
         let mapMarkers = [];
         
-        function showTab(tabName) {
+        function showTab(tabName, event) {
+            // Prevent default if event is provided
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            
+            const tabContent = document.getElementById(tabName);
+            if (!tabContent) {
+                console.error('Tab content not found:', tabName);
+                return;
+            }
+            tabContent.classList.add('active');
+            
+            // Find and activate the clicked tab button
+            const tabButtons = document.querySelectorAll('.tab');
+            tabButtons.forEach(btn => {
+                if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
+                    btn.classList.add('active');
+                }
+            });
             
             // Load appropriate data for each tab
-            if (tabName === 'config') {
-                loadConfig();
-            } else if (tabName === 'map') {
-                initMap();
-            } else if (tabName === 'bbs') {
-                loadBBS();
-            } else if (tabName === 'activity') {
-                loadActivity();
-            } else if (tabName === 'health') {
-                loadHealth();
-            } else if (tabName === 'management') {
-                loadManagement();
-            } else if (tabName === 'statistics') {
-                loadStatistics();
-            } else if (tabName === 'network') {
-                loadNetworkGraph();
-            } else if (tabName === 'alerts') {
-                loadAlerts();
-            } else {
-                refreshData();
+            try {
+                if (tabName === 'config') {
+                    loadConfig();
+                } else if (tabName === 'map') {
+                    initMap();
+                } else if (tabName === 'bbs') {
+                    loadBBS();
+                } else if (tabName === 'activity') {
+                    loadActivity();
+                } else if (tabName === 'health') {
+                    loadHealth();
+                } else if (tabName === 'management') {
+                    loadManagement();
+                } else if (tabName === 'statistics') {
+                    loadStatistics();
+                } else if (tabName === 'network') {
+                    loadNetworkGraph();
+                } else if (tabName === 'alerts') {
+                    loadAlerts();
+                } else {
+                    refreshData();
+                }
+            } catch (error) {
+                console.error('Error loading tab:', tabName, error);
+                const content = tabContent.querySelector('.loading, [id$="-content"]');
+                if (content) {
+                    content.innerHTML = `<div class="error">Error loading tab: ${error.message}</div>`;
+                }
             }
         }
         
@@ -1761,7 +1788,13 @@ def get_web_ui_html() -> str:
         }
         
         async function refreshData() {
-            const activeTab = document.querySelector('.tab-content.active').id;
+            const activeTabElement = document.querySelector('.tab-content.active');
+            if (!activeTabElement) {
+                console.warn('No active tab found');
+                return;
+            }
+            
+            const activeTab = activeTabElement.id;
             
             try {
                 switch(activeTab) {
@@ -1777,20 +1810,33 @@ def get_web_ui_html() -> str:
                     case 'leaderboard':
                         await loadLeaderboard();
                         break;
+                    default:
+                        // Tab has its own loader, don't refresh
+                        break;
                 }
             } catch (error) {
                 console.error('Error refreshing data:', error);
+                const content = activeTabElement.querySelector('[id$="-content"]');
+                if (content) {
+                    content.innerHTML = `<div class="error">Error loading data: ${error.message}</div>`;
+                }
             }
         }
         
         async function loadDashboard() {
             const content = document.getElementById('dashboard-content');
-            const data = await fetchAPI('dashboard');
-            
-            if (data.error) {
-                content.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+            if (!content) {
+                console.error('Dashboard content element not found');
                 return;
             }
+            
+            try {
+                const data = await fetchAPI('dashboard');
+                
+                if (data.error) {
+                    content.innerHTML = `<div class="error">Error: ${data.error}<br><small>Check browser console (F12) for details</small></div>`;
+                    return;
+                }
             
             let html = '<div class="grid">';
             
@@ -1840,6 +1886,10 @@ def get_web_ui_html() -> str:
             
             html += '</div>';
             content.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                content.innerHTML = `<div class="error">Error loading dashboard: ${error.message}<br><small>Check browser console (F12) for details</small></div>`;
+            }
         }
         
         async function loadNodes() {
