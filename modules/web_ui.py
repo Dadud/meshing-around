@@ -3862,13 +3862,21 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
                         freed, message = free_locked_tcp_port(port, auto_kill_port_lock)
                         if freed:
                             print(f"Web UI: {message}")
-                            time.sleep(1)  # Brief wait for port to be fully released
+                            time.sleep(2)  # Wait longer for port to be fully released
                             continue  # Retry immediately
                         else:
                             print(f"Web UI: Port {port} is in use. {message}")
-                            print(f"Web UI: Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...")
-                            time.sleep(retry_delay)
-                            retry_delay += 1
+                            # Try one more time with a longer wait
+                            if attempt < max_retries - 1:
+                                print(f"Web UI: Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...")
+                                time.sleep(retry_delay)
+                                retry_delay += 1
+                                # Try to free the port again
+                                freed, message = free_locked_tcp_port(port, auto_kill_port_lock)
+                                if freed:
+                                    print(f"Web UI: Port freed on retry: {message}")
+                                    time.sleep(2)
+                                    continue
                     else:
                         print(f"Web UI: Port {port} is in use. Auto-kill disabled.")
                         print(f"Web UI: Waiting {retry_delay}s before retry (attempt {attempt + 1}/{max_retries})...")
