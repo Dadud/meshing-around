@@ -836,160 +836,372 @@ def get_web_ui_html() -> str:
     <title>Meshing-Around - Dashboard & Configuration</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --secondary: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --card-shadow-hover: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            background-attachment: fixed;
+            color: #1f2937;
             min-height: 100vh;
             padding: 20px;
+            line-height: 1.6;
         }
-        .container { max-width: 1600px; margin: 0 auto; }
+        .container { max-width: 1800px; margin: 0 auto; }
         header {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            padding: 24px 32px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        h1 { color: #667eea; margin-bottom: 10px; }
+        h1 { 
+            color: var(--primary);
+            margin-bottom: 8px;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
         .tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 8px;
+            margin-bottom: 24px;
             flex-wrap: wrap;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 8px;
+            border-radius: 12px;
         }
         .tab {
-            background: rgba(255, 255, 255, 0.9);
-            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
-            font-weight: 500;
-            transition: all 0.3s;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: #4b5563;
+            position: relative;
+            overflow: hidden;
         }
-        .tab:hover { background: rgba(255, 255, 255, 1); transform: translateY(-2px); }
-        .tab.active { background: #667eea; color: white; }
-        .content {
+        .tab::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+        .tab:hover::before {
+            left: 100%;
+        }
+        .tab:hover { 
             background: rgba(255, 255, 255, 0.95);
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            min-height: 400px;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
+        .tab.active { 
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+            transform: translateY(-2px);
+        }
+        .content {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            padding: 32px;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            min-height: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .tab-content { 
+            display: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+        .tab-content.active { 
+            display: block; 
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
         }
         .card {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
         }
-        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, var(--primary) 0%, var(--secondary) 100%);
+            transition: width 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--card-shadow-hover);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+        .card:hover::before {
+            width: 100%;
+            opacity: 0.05;
+        }
+        .card h3 { 
+            color: var(--primary);
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 700;
+            position: relative;
+            z-index: 1;
+        }
         .stat {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #e5e7eb;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+            transition: background 0.2s;
         }
-        .stat:last-child { border-bottom: none; }
-        .config-section {
-            margin-bottom: 30px;
-            padding: 20px;
-            background: #f8f9fa;
+        .stat:hover {
+            background: rgba(99, 102, 241, 0.05);
+            margin: 0 -24px;
+            padding-left: 24px;
+            padding-right: 24px;
             border-radius: 8px;
         }
+        .stat:last-child { border-bottom: none; }
+        .stat span:last-child {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 15px;
+        }
+        .config-section {
+            margin-bottom: 32px;
+            padding: 24px;
+            background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
         .config-section h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
+            color: var(--primary);
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 12px;
+            font-size: 20px;
+            font-weight: 700;
         }
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 20px;
         }
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
+            margin-bottom: 8px;
+            font-weight: 600;
             color: #374151;
+            font-size: 14px;
         }
         .form-group input,
         .form-group select,
         .form-group textarea {
             width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
             font-size: 14px;
+            transition: all 0.2s;
+            background: white;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
         .form-group input[type="checkbox"] {
             width: auto;
             margin-right: 8px;
+            cursor: pointer;
         }
         .btn {
-            background: #667eea;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
+            padding: 12px 24px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
-            font-weight: 500;
-            margin-right: 10px;
-            transition: all 0.3s;
+            font-weight: 600;
+            margin-right: 12px;
+            margin-bottom: 8px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px rgba(99, 102, 241, 0.25);
+            position: relative;
+            overflow: hidden;
         }
-        .btn:hover { background: #5568d3; transform: translateY(-2px); }
-        .btn-success { background: #10b981; }
-        .btn-danger { background: #ef4444; }
-        .loading { text-align: center; padding: 40px; color: #6b7280; }
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        .btn:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(99, 102, 241, 0.35);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .btn-success { 
+            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.25);
+        }
+        .btn-success:hover {
+            box-shadow: 0 6px 12px rgba(16, 185, 129, 0.35);
+        }
+        .btn-danger { 
+            background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.25);
+        }
+        .btn-danger:hover {
+            box-shadow: 0 6px 12px rgba(239, 68, 68, 0.35);
+        }
+        .loading { 
+            text-align: center; 
+            padding: 60px; 
+            color: #6b7280;
+            font-size: 16px;
+        }
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
         .error {
-            background: #fee2e2;
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
             color: #991b1b;
-            padding: 15px;
-            border-radius: 6px;
+            padding: 16px 20px;
+            border-radius: 10px;
             margin-bottom: 20px;
+            border-left: 4px solid var(--danger);
+            box-shadow: 0 2px 4px rgba(239, 68, 68, 0.1);
         }
         .success {
-            background: #d1fae5;
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
             color: #065f46;
-            padding: 15px;
-            border-radius: 6px;
+            padding: 16px 20px;
+            border-radius: 10px;
             margin-bottom: 20px;
+            border-left: 4px solid var(--success);
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);
         }
         table {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 24px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
         th, td {
-            padding: 12px;
+            padding: 14px 16px;
             text-align: left;
             border-bottom: 1px solid #e5e7eb;
         }
         th {
-            background: #667eea;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
-            font-weight: 600;
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        tr:hover { background: #f8f9fa; }
+        tr {
+            transition: background 0.2s;
+        }
+        tr:hover { 
+            background: rgba(99, 102, 241, 0.05);
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
         .badge {
             display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 6px 14px;
+            border-radius: 20px;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        .badge.success { background: #10b981; color: white; }
-        .badge.warning { background: #f59e0b; color: white; }
-        .badge.danger { background: #ef4444; color: white; }
-        .badge.info { background: #3b82f6; color: white; }
+        .badge.success { 
+            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+            color: white; 
+        }
+        .badge.warning { 
+            background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
+            color: white; 
+        }
+        .badge.danger { 
+            background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
+            color: white; 
+        }
+        .badge.info { 
+            background: linear-gradient(135deg, var(--info) 0%, #2563eb 100%);
+            color: white; 
+        }
         /* Map Styles */
         #map-container {
             width: 100%;
@@ -1015,28 +1227,38 @@ def get_web_ui_html() -> str:
         }
         /* BBS Styles */
         .bbs-message {
-            background: #f8f9fa;
-            padding: 16px;
-            border-radius: 8px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            padding: 20px;
+            border-radius: 12px;
             margin-bottom: 16px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--primary);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+        }
+        .bbs-message:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
         .bbs-message-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #667eea;
+            margin-bottom: 12px;
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 13px;
         }
         .bbs-message-body {
             color: #374151;
-            margin-top: 8px;
+            margin-top: 12px;
             white-space: pre-wrap;
+            line-height: 1.6;
         }
         .bbs-message-meta {
             font-size: 12px;
             color: #6b7280;
-            margin-top: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(226, 232, 240, 0.8);
         }
     </style>
     <!-- Leaflet CSS for OpenStreetMap -->
@@ -1046,7 +1268,7 @@ def get_web_ui_html() -> str:
     <div class="container">
         <header>
             <h1>📡 Meshing-Around Dashboard & Configuration</h1>
-            <p>Monitor your mesh network and configure all settings</p>
+            <p style="color: #6b7280; font-size: 15px; margin-top: 4px;">Monitor your mesh network and configure all settings</p>
         </header>
         
         <div class="tabs">
@@ -1269,6 +1491,145 @@ def get_web_ui_html() -> str:
             }
         }
         
+        // User-friendly labels and descriptions for config options
+        const configLabels = {
+            'web_ui': {
+                'enabled': { label: 'Enable Web Dashboard', desc: 'Turn the web interface on or off' },
+                'host': { label: 'Network Address', desc: 'IP address to listen on (0.0.0.0 = all networks)' },
+                'port': { label: 'Port Number', desc: 'Web interface port (default: 8420)' }
+            },
+            'mcp_server': {
+                'enabled': { label: 'Enable API Server', desc: 'Turn the API server on or off' },
+                'host': { label: 'Network Address', desc: 'IP address to listen on (0.0.0.0 = all networks)' },
+                'port': { label: 'Port Number', desc: 'API server port (default: 8421)' }
+            },
+            'general': {
+                'respond_by_dm_only': { label: 'Only Respond to Direct Messages', desc: 'If enabled, bot only responds to DMs, not channel messages' },
+                'defaultChannel': { label: 'Default Channel', desc: 'Main public channel number (usually 0)' },
+                'ignoreDefaultChannel': { label: 'Ignore Default Channel', desc: 'Don\'t respond to messages on the default channel' },
+                'ignoreChannels': { label: 'Channels to Ignore', desc: 'Comma-separated list of channel numbers to ignore (e.g., 4,5)' },
+                'explicitCmd': { label: 'Require Explicit Commands', desc: 'Only process messages that start with a command word' },
+                'cmdBang': { label: 'Require ! Before Commands', desc: 'Commands must start with ! (e.g., !ping)' },
+                'motd': { label: 'Message of the Day', desc: 'Message shown when bot starts' },
+                'welcome_message': { label: 'Welcome Message', desc: 'Message sent to new users' },
+                'whoami': { label: 'Enable Who Am I Command', desc: 'Allow users to ask who the bot is' },
+                'zuluTime': { label: 'Use 24-Hour Time Format', desc: 'Display time in 24-hour format instead of 12-hour' },
+                'favoriteNodeList': { label: 'Favorite Nodes', desc: 'Comma-separated list of node IDs to add as favorites' }
+            },
+            'bbs': {
+                'enabled': { label: 'Enable Bulletin Board System', desc: 'Turn on the BBS messaging feature' },
+                'bbs_ban_list': { label: 'Banned Node IDs', desc: 'Comma-separated list of node IDs that cannot use BBS' },
+                'bbs_admin_list': { label: 'BBS Admin Node IDs', desc: 'Comma-separated list of node IDs with admin privileges' },
+                'bbslink_enabled': { label: 'Enable BBS Linking', desc: 'Sync BBS messages with other bots' },
+                'bbslink_whitelist': { label: 'BBS Link Whitelist', desc: 'Node IDs allowed to sync (empty = all)' }
+            },
+            'location': {
+                'enabled': { label: 'Enable Location Features', desc: 'Turn on location-based features' },
+                'lat': { label: 'Latitude', desc: 'Your location latitude (for weather, alerts, etc.)' },
+                'lon': { label: 'Longitude', desc: 'Your location longitude (for weather, alerts, etc.)' },
+                'fuzzConfigLocation': { label: 'Fuzz Location', desc: 'Add random offset to protect privacy' },
+                'useMetric': { label: 'Use Metric Units', desc: 'Display distances in metric instead of imperial' }
+            },
+            'sentry': {
+                'SentryEnabled': { label: 'Enable Proximity Alerts', desc: 'Alert when nodes get close to your location' },
+                'SentryRadius': { label: 'Alert Radius (meters)', desc: 'Distance in meters to trigger proximity alert' },
+                'SentryChannel': { label: 'Alert Channel', desc: 'Channel number to send proximity alerts' },
+                'SentryHoldoff': { label: 'Alert Holdoff Time', desc: 'Wait time before sending another alert (multiplied by 20 seconds)' },
+                'sentryIgnoreList': { label: 'Nodes to Ignore', desc: 'Comma-separated node IDs to ignore for proximity' },
+                'sentryWatchList': { label: 'Nodes to Watch', desc: 'Comma-separated node IDs to specifically watch' },
+                'highFlyingAlert': { label: 'High Altitude Alerts', desc: 'Alert when nodes are detected at high altitude' },
+                'highFlyingAlertAltitude': { label: 'High Altitude Threshold (meters)', desc: 'Altitude in meters to trigger alert' }
+            },
+            'games': {
+                'dopeWars': { label: 'Dope Wars Game', desc: 'Enable the Dope Wars game' },
+                'lemonade': { label: 'Lemonade Stand Game', desc: 'Enable the Lemonade Stand game' },
+                'blackjack': { label: 'Blackjack Game', desc: 'Enable the Blackjack game' },
+                'videopoker': { label: 'Video Poker Game', desc: 'Enable the Video Poker game' },
+                'mastermind': { label: 'Mastermind Game', desc: 'Enable the Mastermind game' },
+                'golfsim': { label: 'Golf Simulator', desc: 'Enable the Golf Simulator game' },
+                'hangman': { label: 'Hangman Game', desc: 'Enable the Hangman game' },
+                'hamtest': { label: 'Ham Test Practice', desc: 'Enable ham radio test practice questions' },
+                'tictactoe': { label: 'Tic Tac Toe Game', desc: 'Enable the Tic Tac Toe game' },
+                'wordOfTheDay': { label: 'Word of the Day', desc: 'Enable the Word of the Day feature' },
+                'battleShip': { label: 'Battleship Game', desc: 'Enable the Battleship game' },
+                'quiz': { label: 'Quiz Game', desc: 'Enable the quiz game module' },
+                'survey': { label: 'Survey Game', desc: 'Enable the survey game module' }
+            },
+            'messagingSettings': {
+                'responseDelay': { label: 'Response Delay (seconds)', desc: 'Wait time before sending responses to avoid collisions' },
+                'splitDelay': { label: 'Split Message Delay (seconds)', desc: 'Wait time between message chunks' },
+                'MESSAGE_CHUNK_SIZE': { label: 'Max Message Size (characters)', desc: 'Maximum characters per message chunk' },
+                'wantAck': { label: 'Request Message Acknowledgement', desc: 'Request confirmation that messages were received' },
+                'maxBuffer': { label: 'Max Buffer Size (bytes)', desc: 'Maximum buffer size for radio testing' }
+            },
+            'emergencyHandler': {
+                'enabled': { label: 'Enable Emergency Handler', desc: 'Detect and respond to emergency keywords' },
+                'alert_channel': { label: 'Alert Channel', desc: 'Channel to send emergency alerts' },
+                'alert_interface': { label: 'Alert Interface', desc: 'Radio interface to send alerts from' }
+            },
+            'repeater': {
+                'enabled': { label: 'Enable Repeater Mode', desc: 'Forward messages between channels/interfaces' },
+                'repeater_channels': { label: 'Repeater Channels', desc: 'Comma-separated list of channels to repeat (e.g., 2,3)' }
+            },
+            'scheduler': {
+                'enabled': { label: 'Enable Message Scheduler', desc: 'Schedule automatic messages' },
+                'interface': { label: 'Scheduler Interface', desc: 'Radio interface to send scheduled messages' },
+                'channel': { label: 'Scheduler Channel', desc: 'Channel to send scheduled messages' },
+                'message': { label: 'Scheduled Message', desc: 'Message text to send' },
+                'value': { label: 'Schedule Type', desc: 'Schedule type: min, hour, day, or special (weather, joke, etc.)' },
+                'interval': { label: 'Interval', desc: 'Interval value (e.g., every 2 hours)' },
+                'time': { label: 'Time of Day', desc: 'Time in 24-hour format (HH:MM) for daily schedules' }
+            },
+            'interface': {
+                'type': { label: 'Connection Type', desc: 'How to connect: serial, tcp, or ble' },
+                'port': { label: 'Serial Port', desc: 'Serial port device (e.g., /dev/ttyACM0)' },
+                'hostname': { label: 'TCP Hostname', desc: 'IP address or hostname for TCP connection' },
+                'mac': { label: 'Bluetooth MAC Address', desc: 'MAC address for Bluetooth Low Energy connection' },
+                'enabled': { label: 'Enable Interface', desc: 'Turn this radio interface on or off' }
+            }
+        };
+        
+        // Group config sections logically
+        const configGroups = {
+            'Web Interface': ['web_ui', 'mcp_server'],
+            'Radio Interfaces': ['interface', 'interface2', 'interface3', 'interface4', 'interface5', 'interface6', 'interface7', 'interface8', 'interface9'],
+            'Basic Bot Settings': ['general'],
+            'Messaging': ['messagingSettings', 'StoreForward'],
+            'Bulletin Board System': ['bbs'],
+            'Location & Weather': ['location'],
+            'Alerts & Monitoring': ['sentry', 'emergencyHandler'],
+            'Games & Entertainment': ['games'],
+            'Information Sources': ['rss', 'wikipedia', 'news'],
+            'AI & Language': ['ollama', 'OpenWebUI'],
+            'Advanced Features': ['repeater', 'scheduler', 'checklist', 'inventory', 'qrz'],
+            'Radio Monitoring': ['radioMon', 'fileMon'],
+            'Email & Communication': ['smtp'],
+            'Logging & Debugging': ['logging']
+        };
+        
+        function getConfigLabel(section, key) {
+            if (configLabels[section] && configLabels[section][key]) {
+                return configLabels[section][key];
+            }
+            // Generate friendly label from key name
+            const friendly = key
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, str => str.toUpperCase())
+                .trim();
+            return { label: friendly, desc: '' };
+        }
+        
+        function formatSectionName(section) {
+            if (section.startsWith('interface')) {
+                const num = section.replace('interface', '');
+                return num === '' ? 'Primary Radio' : `Radio ${num}`;
+            }
+            return section
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/^./, str => str.toUpperCase())
+                .trim();
+        }
+        
         async function loadConfig() {
             const content = document.getElementById('config-content');
             const data = await fetchAPI('config');
@@ -1281,24 +1642,78 @@ def get_web_ui_html() -> str:
             configData = data.config || {};
             let html = '';
             
-            // Generate form for each config section
+            // Group and display config by logical groups
+            for (const [groupName, sections] of Object.entries(configGroups)) {
+                const groupSections = sections.filter(s => configData[s]);
+                if (groupSections.length === 0) continue;
+                
+                html += `<div class="config-section"><h3>${groupName}</h3>`;
+                
+                for (const section of groupSections) {
+                    const items = configData[section];
+                    const sectionTitle = formatSectionName(section);
+                    
+                    if (sections.length > 1) {
+                        html += `<h4 style="color: var(--primary); margin-top: 20px; margin-bottom: 12px; font-size: 16px; font-weight: 600;">${sectionTitle}</h4>`;
+                    }
+                    
+                    for (const [key, value] of Object.entries(items)) {
+                        const id = `${section}_${key}`;
+                        const isBool = value === 'True' || value === 'False' || value === 'true' || value === 'false';
+                        const labelInfo = getConfigLabel(section, key);
+                        
+                        html += `<div class="form-group">`;
+                        html += `<label for="${id}">${labelInfo.label}</label>`;
+                        if (labelInfo.desc) {
+                            html += `<small style="display: block; color: #6b7280; margin-bottom: 6px; font-size: 12px;">${labelInfo.desc}</small>`;
+                        }
+                        
+                        if (isBool) {
+                            const checked = value === 'True' || value === 'true' ? 'checked' : '';
+                            html += `<label style="display: flex; align-items: center; cursor: pointer; margin-top: 8px;">
+                                <input type="checkbox" id="${id}" ${checked} style="width: 20px; height: 20px; margin-right: 10px;" onchange="updateConfigValue('${section}', '${key}', this.checked)">
+                                <span>${checked ? 'Enabled' : 'Disabled'}</span>
+                            </label>`;
+                        } else if (key.toLowerCase().includes('password') || key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('api')) {
+                            html += `<input type="password" id="${id}" value="${value}" onchange="updateConfigValue('${section}', '${key}', this.value)" placeholder="Enter ${labelInfo.label.toLowerCase()}">`;
+                        } else if (value.includes('\\n') || value.length > 100) {
+                            html += `<textarea id="${id}" rows="4" onchange="updateConfigValue('${section}', '${key}', this.value)" placeholder="Enter ${labelInfo.label.toLowerCase()}">${value}</textarea>`;
+                        } else if (key.toLowerCase().includes('port') || key.toLowerCase().includes('channel') || key.toLowerCase().includes('interval') || key.toLowerCase().includes('timeout') || key.toLowerCase().includes('radius') || key.toLowerCase().includes('altitude')) {
+                            html += `<input type="number" id="${id}" value="${value}" onchange="updateConfigValue('${section}', '${key}', this.value)" placeholder="Enter ${labelInfo.label.toLowerCase()}">`;
+                        } else {
+                            html += `<input type="text" id="${id}" value="${value}" onchange="updateConfigValue('${section}', '${key}', this.value)" placeholder="Enter ${labelInfo.label.toLowerCase()}">`;
+                        }
+                        
+                        html += `</div>`;
+                    }
+                }
+                
+                html += `</div>`;
+            }
+            
+            // Handle any remaining sections not in groups
+            const handledSections = new Set(Object.values(configGroups).flat());
             for (const [section, items] of Object.entries(configData)) {
-                html += `<div class="config-section"><h3>${section}</h3>`;
+                if (handledSections.has(section)) continue;
+                
+                html += `<div class="config-section"><h3>${formatSectionName(section)}</h3>`;
                 for (const [key, value] of Object.entries(items)) {
                     const id = `${section}_${key}`;
                     const isBool = value === 'True' || value === 'False' || value === 'true' || value === 'false';
+                    const labelInfo = getConfigLabel(section, key);
                     
                     html += `<div class="form-group">`;
-                    html += `<label for="${id}">${key}</label>`;
+                    html += `<label for="${id}">${labelInfo.label}</label>`;
+                    if (labelInfo.desc) {
+                        html += `<small style="display: block; color: #6b7280; margin-bottom: 6px; font-size: 12px;">${labelInfo.desc}</small>`;
+                    }
                     
                     if (isBool) {
                         const checked = value === 'True' || value === 'true' ? 'checked' : '';
-                        html += `<input type="checkbox" id="${id}" ${checked} onchange="updateConfigValue('${section}', '${key}', this.checked)">`;
-                        html += `<span>${value}</span>`;
-                    } else if (key.toLowerCase().includes('password') || key.toLowerCase().includes('key') || key.toLowerCase().includes('token')) {
-                        html += `<input type="password" id="${id}" value="${value}" onchange="updateConfigValue('${section}', '${key}', this.value)">`;
-                    } else if (value.includes('\\n') || value.length > 100) {
-                        html += `<textarea id="${id}" rows="3" onchange="updateConfigValue('${section}', '${key}', this.value)">${value}</textarea>`;
+                        html += `<label style="display: flex; align-items: center; cursor: pointer; margin-top: 8px;">
+                            <input type="checkbox" id="${id}" ${checked} style="width: 20px; height: 20px; margin-right: 10px;" onchange="updateConfigValue('${section}', '${key}', this.checked)">
+                            <span>${checked ? 'Enabled' : 'Disabled'}</span>
+                        </label>`;
                     } else {
                         html += `<input type="text" id="${id}" value="${value}" onchange="updateConfigValue('${section}', '${key}', this.value)">`;
                     }
@@ -1313,7 +1728,21 @@ def get_web_ui_html() -> str:
         
         function updateConfigValue(section, key, value) {
             if (!configData[section]) configData[section] = {};
-            configData[section][key] = value;
+            // Convert boolean to string format expected by config
+            if (typeof value === 'boolean') {
+                configData[section][key] = value ? 'True' : 'False';
+                // Update checkbox label
+                const checkbox = document.getElementById(`${section}_${key}`);
+                if (checkbox) {
+                    const label = checkbox.closest('label');
+                    if (label) {
+                        const span = label.querySelector('span');
+                        if (span) span.textContent = value ? 'Enabled' : 'Disabled';
+                    }
+                }
+            } else {
+                configData[section][key] = value;
+            }
         }
         
         async function saveConfig() {
