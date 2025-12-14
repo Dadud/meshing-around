@@ -3883,7 +3883,29 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
                         time.sleep(retry_delay)
                         retry_delay += 1
                 else:
-                    raise Exception(f"Failed to start Web UI on port {port} after {max_retries} attempts. Port is in use. Check with: sudo lsof -i :{port} or sudo fuser {port}/tcp")
+                    # Final attempt failed - provide helpful error message
+                    import subprocess
+                    try:
+                        # Try to identify what's using the port
+                        lsof_result = subprocess.run(
+                            ["lsof", "-i", f":{port}"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        port_info = lsof_result.stdout if lsof_result.returncode == 0 else "Unable to identify process"
+                    except:
+                        port_info = "Unable to identify process (lsof not available)"
+                    
+                    error_msg = (
+                        f"Failed to start Web UI on port {port} after {max_retries} attempts.\n"
+                        f"Port is in use. To fix this:\n"
+                        f"1. Check what's using the port: sudo lsof -i :{port} or sudo fuser {port}/tcp\n"
+                        f"2. Kill the process: sudo kill -9 <PID> (replace <PID> with the process ID)\n"
+                        f"3. Or disable auto-kill and manually free the port\n"
+                        f"Current port status:\n{port_info}"
+                    )
+                    raise Exception(error_msg)
             else:
                 # Different error, re-raise it
                 raise
