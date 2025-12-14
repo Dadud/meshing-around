@@ -2044,6 +2044,12 @@ def get_web_ui_html() -> str:
                 
                 html += '</div>';
                 
+                // Add auto-update settings section
+                html += '<div class="config-section" style="margin-top: 32px;">';
+                html += '<h3>⚙️ Auto-Update Settings</h3>';
+                html += '<div id="auto-update-settings" class="loading">Loading auto-update settings...</div>';
+                html += '</div>';
+                
                 // Add changelog section
                 html += '<div class="config-section" style="margin-top: 32px;">';
                 html += '<h3>📋 Recent Changelog</h3>';
@@ -2052,7 +2058,8 @@ def get_web_ui_html() -> str:
                 
                 content.innerHTML = html;
                 
-                // Load changelog
+                // Load auto-update settings and changelog
+                loadAutoUpdateSettings();
                 loadChangelog();
             } catch (error) {
                 content.innerHTML = `<div class="error">Error loading update status: ${error.message}</div>`;
