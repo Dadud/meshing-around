@@ -762,15 +762,14 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
         parsed_path = urllib.parse.urlparse(self.path)
         path_parts = parsed_path.path.strip('/').split('/')
         
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        
         try:
             if path_parts[0] == '':
                 # Root - serve web UI
+                self.send_response(200)
                 self.send_header('Content-Type', 'text/html')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type')
                 self.end_headers()
                 self.wfile.write(get_web_ui_html().encode('utf-8'))
                 return
@@ -825,7 +824,11 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
             elif path_parts[0] == 'api':
                 # API endpoints
+                self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type')
                 self.end_headers()
                 
                 if len(path_parts) > 1:
