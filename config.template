@@ -23,6 +23,22 @@ port = /dev/ttyUSB0
 
 # example, the third interface would be [interface3] up to 9
 
+[web_ui]
+# Enable or disable the Web UI dashboard (default: True)
+enabled = True
+# Host address to bind the Web UI server (default: 0.0.0.0 for all interfaces)
+host = 0.0.0.0
+# Port for the Web UI server (default: 8420)
+port = 8420
+
+[mcp_server]
+# Enable or disable the MCP (Model Context Protocol) Server API (default: True)
+enabled = True
+# Host address to bind the MCP server (default: 0.0.0.0 for all interfaces)
+host = 0.0.0.0
+# Port for the MCP server API (default: 8421)
+port = 8421
+
 [general]
 # if False will respond on all channels but the default channel
 respond_by_dm_only = True

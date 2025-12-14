@@ -98,6 +98,21 @@ Advanced check-in/check-out and asset tracking for people and equipment—ideal 
 ### Data Reporting
 - **HTML Reports**: Visualize bot traffic and data flows with a built-in HTML generator. See [data reporting](logs/README.md) for details.
 
+### Web UI Dashboard
+- **Interactive Dashboard**: Access a web-based dashboard at `http://your-bot-ip:8420` to monitor your mesh network in real-time.
+- **Node Map**: Visualize node locations on an interactive map using OpenStreetMap. Nodes with position data are automatically displayed and updated as packets are received.
+- **BBS Viewer**: Browse all Bulletin Board System messages and pending Direct Messages through the web interface.
+- **RF Telemetry**: Monitor packet statistics, transmission/reception counts, and error rates for all interfaces.
+- **Configuration Management**: Edit bot settings directly through the web interface with automatic backup on save.
+- **Real-time Updates**: All data auto-refreshes every 10 seconds to keep information current.
+- **Disable Web UI**: Set `enabled = False` in the `[web_ui]` section of `config.ini` to disable the web interface.
+
+### MCP Server API
+- **RESTful API**: Access read-only node and RF telemetry data via JSON API endpoints on port 8421 (default).
+- **CORS Enabled**: API can be accessed from web applications and other services.
+- **Endpoints**: `/api/nodes`, `/api/telemetry`, `/api/position`, `/api/leaderboard` for programmatic access to mesh data.
+- **Disable MCP Server**: Set `enabled = False` in the `[mcp_server]` section of `config.ini` to disable the API server.
+
 ### Robust Message Handling
 - **Automatic Message Chunking**: Messages over 160 characters are automatically split to ensure reliable delivery across multiple hops.
 

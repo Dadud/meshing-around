@@ -103,6 +103,14 @@ if 'games' not in config:
     config['games'] = {'dopeWars': 'True', 'lemonade': 'True', 'blackjack': 'True', 'videoPoker': 'True'}
     config.write(open(config_file, 'w'))
 
+if 'web_ui' not in config:
+    config['web_ui'] = {'enabled': 'True', 'host': '0.0.0.0', 'port': '8420'}
+    config.write(open(config_file, 'w'))
+
+if 'mcp_server' not in config:
+    config['mcp_server'] = {'enabled': 'True', 'host': '0.0.0.0', 'port': '8421'}
+    config.write(open(config_file, 'w'))
+
 if 'messagingSettings' not in config:
     config['messagingSettings'] = {'responseDelay': '0.7', 'splitDelay': '0', 'MESSAGE_CHUNK_SIZE': '160'}
     config.write(open(config_file, 'w'))
@@ -504,6 +512,16 @@ try:
     autoBanThreshold = config['messagingSettings'].getint('autoBanThreshold', 5) # default 5 offenses
     autoBanTimeframe = config['messagingSettings'].getint('autoBanTimeframe', 3600) # default 1 hour in seconds
     apiThrottleValue = config['messagingSettings'].getint('apiThrottleValue', 20) # default 20 requests
+    
+    # web_ui settings
+    web_ui_enabled = config['web_ui'].getboolean('enabled', True) # default True
+    web_ui_host = config['web_ui'].get('host', '0.0.0.0') # default 0.0.0.0
+    web_ui_port = config['web_ui'].getint('port', 8420) # default 8420
+    
+    # mcp_server settings
+    mcp_server_enabled = config['mcp_server'].getboolean('enabled', True) # default True
+    mcp_server_host = config['mcp_server'].get('host', '0.0.0.0') # default 0.0.0.0
+    mcp_server_port = config['mcp_server'].getint('port', 8421) # default 8421
 except Exception as e:
     print(f"System: Error reading config file: {e}")
     print("System: Check the config.ini against config.template file for missing sections or values.")

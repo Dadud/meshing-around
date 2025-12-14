@@ -1694,13 +1694,23 @@ def handle_boot(mesh=True):
     try:
         print (CustomFormatter.bold_white + f"\nMeshtastic Autoresponder Bot CTL+C to exit\n" + CustomFormatter.reset)
         
-        # Start Web UI in background
-        try:
-            from modules.web_ui import start_web_ui
-            start_web_ui(host='0.0.0.0', port=8420, background=True)
-            logger.info("System: Web UI started on port 8420")
-        except Exception as e:
-            logger.warning(f"System: Failed to start Web UI: {e}")
+        # Start MCP Server in background (if enabled)
+        if my_settings.mcp_server_enabled:
+            try:
+                import modules.mcp_server as mcp_server
+                mcp_server.start_mcp_server(host=my_settings.mcp_server_host, port=my_settings.mcp_server_port, background=True)
+                logger.info(f"System: MCP Server started on http://{my_settings.mcp_server_host}:{my_settings.mcp_server_port}")
+            except Exception as e:
+                logger.warning(f"System: Failed to start MCP Server: {e}")
+        
+        # Start Web UI in background (if enabled)
+        if my_settings.web_ui_enabled:
+            try:
+                from modules.web_ui import start_web_ui
+                start_web_ui(host=my_settings.web_ui_host, port=my_settings.web_ui_port, background=True)
+                logger.info(f"System: Web UI started on http://{my_settings.web_ui_host}:{my_settings.web_ui_port}")
+            except Exception as e:
+                logger.warning(f"System: Failed to start Web UI: {e}")
         
         if mesh:
             
