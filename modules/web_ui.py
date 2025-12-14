@@ -1272,21 +1272,21 @@ def get_web_ui_html() -> str:
         </header>
         
         <div class="tabs">
-            <button class="tab active" onclick="showTab('dashboard', event)">📊 Dashboard</button>
-            <button class="tab" onclick="showTab('activity', event)">📨 Activity</button>
-            <button class="tab" onclick="showTab('map', event)">🗺️ Node Map</button>
-            <button class="tab" onclick="showTab('nodes', event)">📡 Nodes</button>
-            <button class="tab" onclick="showTab('node-details', event)">🔍 Node Details</button>
-            <button class="tab" onclick="showTab('telemetry', event)">📈 RF Telemetry</button>
-            <button class="tab" onclick="showTab('statistics', event)">📊 Statistics</button>
-            <button class="tab" onclick="showTab('network', event)">🌐 Network</button>
-            <button class="tab" onclick="showTab('health', event)">💚 Health</button>
-            <button class="tab" onclick="showTab('alerts', event)">🚨 Alerts</button>
-            <button class="tab" onclick="showTab('bbs', event)">💬 BBS</button>
-            <button class="tab" onclick="showTab('composer', event)">✉️ Send</button>
-            <button class="tab" onclick="showTab('management', event)">👥 Management</button>
-            <button class="tab" onclick="showTab('leaderboard', event)">🏆 Leaderboard</button>
-            <button class="tab" onclick="showTab('config', event)">⚙️ Config</button>
+            <button class="tab active" onclick="showTab('dashboard', this)">📊 Dashboard</button>
+            <button class="tab" onclick="showTab('activity', this)">📨 Activity</button>
+            <button class="tab" onclick="showTab('map', this)">🗺️ Node Map</button>
+            <button class="tab" onclick="showTab('nodes', this)">📡 Nodes</button>
+            <button class="tab" onclick="showTab('node-details', this)">🔍 Node Details</button>
+            <button class="tab" onclick="showTab('telemetry', this)">📈 RF Telemetry</button>
+            <button class="tab" onclick="showTab('statistics', this)">📊 Statistics</button>
+            <button class="tab" onclick="showTab('network', this)">🌐 Network</button>
+            <button class="tab" onclick="showTab('health', this)">💚 Health</button>
+            <button class="tab" onclick="showTab('alerts', this)">🚨 Alerts</button>
+            <button class="tab" onclick="showTab('bbs', this)">💬 BBS</button>
+            <button class="tab" onclick="showTab('composer', this)">✉️ Send</button>
+            <button class="tab" onclick="showTab('management', this)">👥 Management</button>
+            <button class="tab" onclick="showTab('leaderboard', this)">🏆 Leaderboard</button>
+            <button class="tab" onclick="showTab('config', this)">⚙️ Config</button>
         </div>
         
         <div class="content">
@@ -1445,13 +1445,7 @@ def get_web_ui_html() -> str:
         let map = null;
         let mapMarkers = [];
         
-        function showTab(tabName, event) {
-            // Prevent default if event is provided
-            if (event) {
-                event.preventDefault();
-                event.stopPropagation();
-            }
-            
+        function showTab(tabName, buttonElement) {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             
@@ -1462,13 +1456,18 @@ def get_web_ui_html() -> str:
             }
             tabContent.classList.add('active');
             
-            // Find and activate the clicked tab button
-            const tabButtons = document.querySelectorAll('.tab');
-            tabButtons.forEach(btn => {
-                if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
-                    btn.classList.add('active');
-                }
-            });
+            // Activate the clicked tab button
+            if (buttonElement) {
+                buttonElement.classList.add('active');
+            } else {
+                // Fallback: find button by onclick attribute
+                const tabButtons = document.querySelectorAll('.tab');
+                tabButtons.forEach(btn => {
+                    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
             
             // Load appropriate data for each tab
             try {
