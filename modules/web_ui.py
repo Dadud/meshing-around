@@ -874,36 +874,43 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
             # Ensure we can send error response even if headers were partially sent
             try:
                 # Try to send error response
-                if not self.headers_sent:
-                    self.send_response(500)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
                 response = {"error": str(e), "type": type(e).__name__}
                 json_response = json.dumps(response, indent=2, default=str)
                 self.wfile.write(json_response.encode('utf-8'))
             except:
-                # If we can't send error response, log it
+                # If we can't send error response (headers already sent), try to write to body
                 import sys
-                print(f"Web UI: Critical error handling request: {e}", file=sys.stderr)
+                print(f"Web UI: Critical error handling GET request: {e}", file=sys.stderr)
                 try:
-                    self.send_error(500, "Internal Server Error")
+                    # Try to write error to response body if headers were already sent
+                    response = {"error": str(e), "type": type(e).__name__}
+                    json_response = json.dumps(response, indent=2, default=str)
+                    self.wfile.write(json_response.encode('utf-8'))
                 except:
-                    pass
+                    # Last resort - try send_error
+                    try:
+                        self.send_error(500, "Internal Server Error")
+                    except:
+                        pass
     
     def do_POST(self):
         """Handle POST requests."""
-        parsed_path = urllib.parse.urlparse(self.path)
-        path_parts = parsed_path.path.strip('/').split('/')
-        
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-        
         try:
+            parsed_path = urllib.parse.urlparse(self.path)
+            path_parts = parsed_path.path.strip('/').split('/')
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.end_headers()
+            
+            try:
             if path_parts[0] == 'api' and len(path_parts) > 1:
                 content_length = int(self.headers.get('Content-Length', 0))
                 post_data = self.rfile.read(content_length) if content_length > 0 else b'{}'
@@ -936,10 +943,33 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
             
             json_response = json.dumps(response, indent=2, default=str)
             self.wfile.write(json_response.encode('utf-8'))
+            except Exception as e:
+                # Inner exception - response headers already sent
+                response = {"error": str(e), "type": type(e).__name__}
+                json_response = json.dumps(response, indent=2, default=str)
+                self.wfile.write(json_response.encode('utf-8'))
         except Exception as e:
-            response = {"error": str(e), "type": type(e).__name__}
-            json_response = json.dumps(response, indent=2, default=str)
-            self.wfile.write(json_response.encode('utf-8'))
+            # Outer exception - ensure we can send error response
+            try:
+                # Check if headers were sent by trying to send them
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                response = {"error": str(e), "type": type(e).__name__}
+                json_response = json.dumps(response, indent=2, default=str)
+                self.wfile.write(json_response.encode('utf-8'))
+            except:
+                # If we can't send error response (headers already sent), log it
+                import sys
+                print(f"Web UI: Critical error handling POST request: {e}", file=sys.stderr)
+                try:
+                    # Try to write error to response body if headers were already sent
+                    response = {"error": str(e), "type": type(e).__name__}
+                    json_response = json.dumps(response, indent=2, default=str)
+                    self.wfile.write(json_response.encode('utf-8'))
+                except:
+                    pass
     
     def do_OPTIONS(self):
         """Handle OPTIONS requests for CORS."""
@@ -3399,4 +3429,5 @@ if __name__ == "__main__":
     
     print(f"Starting Web UI on {host}:{port}")
     start_web_ui(host, port, background=False)
+
 
