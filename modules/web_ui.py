@@ -950,13 +950,23 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                         response = get_bbs_messages()
                     elif path_parts[1] == 'map':
                         # Get nodes with positions for map
-                        nodes = get_node_data()
-                        position = get_position_metadata()
-                        response = {
-                            "success": True,
-                            "nodes": nodes,
-                            "position": position
-                        }
+                        try:
+                            nodes = get_node_data()
+                            position = get_position_metadata()
+                            response = {
+                                "success": True,
+                                "nodes": nodes,
+                                "position": position
+                            }
+                        except Exception as e:
+                            import sys
+                            import traceback
+                            print(f"Web UI: Error in /api/map endpoint: {e}", file=sys.stderr)
+                            traceback.print_exc(file=sys.stderr)
+                            response = {
+                                "error": f"Failed to load map data: {str(e)}",
+                                "type": type(e).__name__
+                            }
                     elif path_parts[1] == 'activity':
                         # Get message history/activity feed
                         limit = 100
@@ -1910,6 +1920,7 @@ def get_web_ui_html() -> str:
         let mapMarkers = [];
         let mapInitialized = false; // Track if map has been initialized
         let mapBoundsFitted = false; // Track if bounds have been fitted (to preserve zoom on updates)
+        let mapLoading = false; // Track if map is currently loading to prevent concurrent calls
         
         async function fetchAPI(endpoint, method='GET', data=null, timeout=30000) {
             try {
@@ -1935,6 +1946,13 @@ def get_web_ui_html() -> str:
                 if (error.name === 'AbortError') {
                     console.error(`Timeout fetching ${endpoint} after ${timeout}ms`);
                     return { error: `Request timed out after ${timeout/1000}s` };
+                }
+                // Check for connection refused errors
+                if (error.message && (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED'))) {
+                    console.error(`Connection refused to ${API_BASE}/api/${endpoint}`);
+                    return { 
+                        error: `Cannot connect to Web UI server at ${API_BASE}. The server may not be running. Please check:\n1. The bot is running\n2. Web UI is enabled in config.ini\n3. The server started successfully (check bot logs)\n4. You're accessing the page from the correct URL`
+                    };
                 }
                 console.error(`Error fetching ${endpoint}:`, error);
                 return { error: error.message || 'Network error - server may be unavailable' };
@@ -2952,119 +2970,132 @@ def get_web_ui_html() -> str:
         async function loadMapNodes() {
             if (!map) return;
             
-            const data = await fetchAPI('map');
-            
-            if (data.error || !data.nodes) {
-                console.error('Error loading nodes for map:', data.error);
+            // Prevent concurrent calls - if already loading, skip this call
+            if (mapLoading) {
+                console.log('Map already loading, skipping concurrent call');
                 return;
             }
             
-            // Clear existing markers and trails
-            mapMarkers.forEach(marker => map.removeLayer(marker));
-            mapMarkers = [];
-            
-            // Clear existing trails
-            Object.values(positionTrails).forEach(trail => {
-                if (trail && map.hasLayer(trail)) {
-                    map.removeLayer(trail);
+            mapLoading = true;
+            try {
+                const data = await fetchAPI('map');
+                
+                if (data.error || !data.nodes) {
+                    console.error('Error loading nodes for map:', data.error);
+                    return;
                 }
-            });
-            positionTrails = {};
-            
-            let hasPositions = false;
-            const bounds = [];
-            
-            // Process position metadata for trails (if available in future)
-            const nodePositions = {};
-            if (data.position && !data.position.error && data.position.nodes) {
-                for (const nodeId in data.position.nodes) {
-                    const posData = data.position.nodes[nodeId];
-                    // If position history is stored, it would be here
-                    if (posData.positions && Array.isArray(posData.positions)) {
-                        nodePositions[nodeId] = posData.positions;
+                
+                // Clear existing markers and trails
+                mapMarkers.forEach(marker => map.removeLayer(marker));
+                mapMarkers = [];
+                
+                // Clear existing trails
+                Object.values(positionTrails).forEach(trail => {
+                    if (trail && map.hasLayer(trail)) {
+                        map.removeLayer(trail);
                     }
-                }
-            }
-            
-            for (const key in data.nodes) {
-                if (data.nodes[key].nodes) {
-                    data.nodes[key].nodes.forEach(node => {
-                        if (node.position && node.position.latitude && node.position.longitude) {
-                            hasPositions = true;
-                            const lat = node.position.latitude;
-                            const lng = node.position.longitude;
-                            const name = node.shortName || node.longName || `Node ${node.nodeId}`;
-                            const nodeId = node.nodeIdHex || node.nodeId;
-                            
-                            // Draw position trail if available
-                            if (nodePositions[nodeId] && nodePositions[nodeId].length > 1) {
-                                const trailCoords = nodePositions[nodeId]
-                                    .filter(p => p.latitude && p.longitude)
-                                    .map(p => [p.latitude, p.longitude]);
-                                
-                                if (trailCoords.length > 1) {
-                                    const trail = L.polyline(trailCoords, {
-                                        color: node.isLocal ? '#10b981' : '#3b82f6',
-                                        weight: 2,
-                                        opacity: 0.6
-                                    }).addTo(map);
-                                    positionTrails[nodeId] = trail;
-                                }
-                            }
-                            
-                            // Create marker with different color for local node
-                            const markerColor = node.isLocal ? 'green' : 'blue';
-                            const marker = L.marker([lat, lng], {
-                                icon: L.divIcon({
-                                    className: 'custom-marker',
-                                    html: `<div style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-                                    iconSize: [20, 20]
-                                })
-                            })
-                            .bindPopup(`
-                                <strong>${name}</strong><br>
-                                Node ID: ${node.nodeIdHex || node.nodeId}<br>
-                                SNR: ${node.snr || 'N/A'}<br>
-                                RSSI: ${node.rssi || 'N/A'}<br>
-                                ${node.position.altitude ? `Altitude: ${node.position.altitude}m<br>` : ''}
-                                ${node.isLocal ? '<span style="color: green;">Local Node</span>' : ''}
-                                ${nodePositions[nodeId] && nodePositions[nodeId].length > 1 ? `<br><small>Trail: ${nodePositions[nodeId].length} positions</small>` : ''}
-                            `)
-                            .addTo(map);
-                            
-                            mapMarkers.push(marker);
-                            bounds.push([lat, lng]);
+                });
+                positionTrails = {};
+                
+                let hasPositions = false;
+                const bounds = [];
+                
+                // Process position metadata for trails (if available in future)
+                const nodePositions = {};
+                if (data.position && !data.position.error && data.position.nodes) {
+                    for (const nodeId in data.position.nodes) {
+                        const posData = data.position.nodes[nodeId];
+                        // If position history is stored, it would be here
+                        if (posData.positions && Array.isArray(posData.positions)) {
+                            nodePositions[nodeId] = posData.positions;
                         }
-                    });
-                }
-            }
-            
-            // Only fit bounds on first load, preserve zoom/center on subsequent updates
-            if (hasPositions && bounds.length > 0) {
-                if (!mapBoundsFitted) {
-                    // First load - fit bounds to show all nodes
-                    try {
-                        map.fitBounds(bounds, { padding: [20, 20] });
-                        mapBoundsFitted = true; // Mark that we've fitted bounds once
-                    } catch (e) {
-                        console.error('Error fitting bounds:', e);
-                        mapBoundsFitted = true; // Mark as fitted even on error to prevent retries
                     }
                 }
-                // On subsequent updates, don't change the view - just update markers
-            } else {
-                // Show message if no positions
-                const mapContainer = document.getElementById('map-container');
-                if (mapContainer) {
-                    const existingMsg = mapContainer.querySelector('.no-positions');
-                    if (!existingMsg) {
-                        const msg = document.createElement('div');
-                        msg.className = 'no-positions';
-                        msg.style.cssText = 'padding: 40px; text-align: center; color: #6b7280; background: rgba(255,255,255,0.9); border-radius: 8px; margin: 20px;';
-                        msg.innerHTML = '<h3>No Node Positions Available</h3><p>Nodes need to have position data to appear on the map.</p><p>Position data comes from packets received from nodes.</p>';
-                        mapContainer.appendChild(msg);
+                
+                for (const key in data.nodes) {
+                    if (data.nodes[key].nodes) {
+                        data.nodes[key].nodes.forEach(node => {
+                            if (node.position && node.position.latitude && node.position.longitude) {
+                                hasPositions = true;
+                                const lat = node.position.latitude;
+                                const lng = node.position.longitude;
+                                const name = node.shortName || node.longName || `Node ${node.nodeId}`;
+                                const nodeId = node.nodeIdHex || node.nodeId;
+                                
+                                // Draw position trail if available
+                                if (nodePositions[nodeId] && nodePositions[nodeId].length > 1) {
+                                    const trailCoords = nodePositions[nodeId]
+                                        .filter(p => p.latitude && p.longitude)
+                                        .map(p => [p.latitude, p.longitude]);
+                                    
+                                    if (trailCoords.length > 1) {
+                                        const trail = L.polyline(trailCoords, {
+                                            color: node.isLocal ? '#10b981' : '#3b82f6',
+                                            weight: 2,
+                                            opacity: 0.6
+                                        }).addTo(map);
+                                        positionTrails[nodeId] = trail;
+                                    }
+                                }
+                                
+                                // Create marker with different color for local node
+                                const markerColor = node.isLocal ? 'green' : 'blue';
+                                const marker = L.marker([lat, lng], {
+                                    icon: L.divIcon({
+                                        className: 'custom-marker',
+                                        html: `<div style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+                                        iconSize: [20, 20]
+                                    })
+                                })
+                                .bindPopup(`
+                                    <strong>${name}</strong><br>
+                                    Node ID: ${node.nodeIdHex || node.nodeId}<br>
+                                    SNR: ${node.snr || 'N/A'}<br>
+                                    RSSI: ${node.rssi || 'N/A'}<br>
+                                    ${node.position.altitude ? `Altitude: ${node.position.altitude}m<br>` : ''}
+                                    ${node.isLocal ? '<span style="color: green;">Local Node</span>' : ''}
+                                    ${nodePositions[nodeId] && nodePositions[nodeId].length > 1 ? `<br><small>Trail: ${nodePositions[nodeId].length} positions</small>` : ''}
+                                `)
+                                .addTo(map);
+                                
+                                mapMarkers.push(marker);
+                                bounds.push([lat, lng]);
+                            }
+                        });
                     }
                 }
+                
+                // Only fit bounds on first load, preserve zoom/center on subsequent updates
+                if (hasPositions && bounds.length > 0) {
+                    if (!mapBoundsFitted) {
+                        // First load - fit bounds to show all nodes
+                        try {
+                            map.fitBounds(bounds, { padding: [20, 20] });
+                            mapBoundsFitted = true; // Mark that we've fitted bounds once
+                        } catch (e) {
+                            console.error('Error fitting bounds:', e);
+                            mapBoundsFitted = true; // Mark as fitted even on error to prevent retries
+                        }
+                    }
+                    // On subsequent updates, don't change the view - just update markers
+                } else {
+                    // Show message if no positions
+                    const mapContainer = document.getElementById('map-container');
+                    if (mapContainer) {
+                        const existingMsg = mapContainer.querySelector('.no-positions');
+                        if (!existingMsg) {
+                            const msg = document.createElement('div');
+                            msg.className = 'no-positions';
+                            msg.style.cssText = 'padding: 40px; text-align: center; color: #6b7280; background: rgba(255,255,255,0.9); border-radius: 8px; margin: 20px;';
+                            msg.innerHTML = '<h3>No Node Positions Available</h3><p>Nodes need to have position data to appear on the map.</p><p>Position data comes from packets received from nodes.</p>';
+                            mapContainer.appendChild(msg);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error in loadMapNodes:', error);
+            } finally {
+                mapLoading = false;
             }
         }
         
@@ -3713,18 +3744,31 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
         Server instance or thread depending on background parameter
     """
     # Simple startup - fail fast if port is in use
+    # Note: allow_reuse_address helps but won't work if socket is in TIME_WAIT state
+    # or if previous server didn't shut down cleanly
     try:
         server = socketserver.TCPServer((host, port), WebUIRequestHandler)
         server.allow_reuse_address = True
     except OSError as e:
         if "Address already in use" in str(e) or "errno 98" in str(e).lower():
+            # Check if there's a previous Web UI server instance we can clean up
+            if hasattr(start_web_ui, '_server_instances'):
+                for old_server in start_web_ui._server_instances[:]:
+                    try:
+                        old_server.shutdown()
+                        old_server.server_close()
+                        start_web_ui._server_instances.remove(old_server)
+                    except:
+                        pass
+            
             error_msg = (
                 f"Failed to start Web UI on port {port}.\n"
-                f"Port is in use. To fix this:\n"
+                f"Port is in use (likely from a previous bot instance). To fix this:\n"
                 f"1. Check what's using the port: sudo lsof -i :{port} or sudo fuser {port}/tcp (Linux/Mac)\n"
                 f"   On Windows: netstat -ano | findstr :{port}\n"
                 f"2. Kill the process: sudo kill -9 <PID> (Linux/Mac) or taskkill /PID <PID> /F (Windows)\n"
-                f"   Replace <PID> with the process ID from step 1"
+                f"   Replace <PID> with the process ID from step 1\n"
+                f"3. Or wait 30-60 seconds for the socket to be released (TIME_WAIT state)"
             )
             raise Exception(error_msg)
         else:
