@@ -13,7 +13,6 @@ import configparser
 import os
 import shutil
 import time
-import subprocess
 from typing import Dict, Any, Optional
 from datetime import datetime
 import threading
@@ -821,21 +820,34 @@ class WebUIRequestHandler(http.server.SimpleHTTPRequestHandler):
                             continue
                         
                         # Send heartbeat every 30 seconds to keep connection alive
-                        self.wfile.write(f": heartbeat\n\n".encode('utf-8'))
-                        self.wfile.flush()
+                        try:
+                            self.wfile.write(f": heartbeat\n\n".encode('utf-8'))
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError, OSError):
+                            # Client disconnected during heartbeat
+                            break
+                        
                         time.sleep(update_interval)
                         
                         # Send update event
-                        update_data = {
-                            'type': 'update',
-                            'timestamp': datetime.now().isoformat(),
-                            'interval': update_interval
-                        }
-                        self.wfile.write(f"data: {json.dumps(update_data)}\n\n".encode('utf-8'))
-                        self.wfile.flush()
+                        try:
+                            update_data = {
+                                'type': 'update',
+                                'timestamp': datetime.now().isoformat(),
+                                'interval': update_interval
+                            }
+                            self.wfile.write(f"data: {json.dumps(update_data)}\n\n".encode('utf-8'))
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError, OSError):
+                            # Client disconnected during update
+                            break
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     # Client disconnected
                     pass
+                except Exception as e:
+                    # Log unexpected errors but don't crash
+                    import sys
+                    print(f"Web UI: SSE connection error: {e}", file=sys.stderr)
                 finally:
                     # Remove client from list
                     with sse_lock:
@@ -3700,31 +3712,19 @@ def start_web_ui(host: str = '0.0.0.0', port: int = 8420, background: bool = Fal
     Returns:
         Server instance or thread depending on background parameter
     """
-    # Simple startup - no port recovery
+    # Simple startup - fail fast if port is in use
     try:
         server = socketserver.TCPServer((host, port), WebUIRequestHandler)
         server.allow_reuse_address = True
     except OSError as e:
         if "Address already in use" in str(e) or "errno 98" in str(e).lower():
-            import subprocess
-            try:
-                # Try to identify what's using the port
-                lsof_result = subprocess.run(
-                    ["lsof", "-i", f":{port}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                port_info = lsof_result.stdout if lsof_result.returncode == 0 else "Unable to identify process"
-            except:
-                port_info = "Unable to identify process (lsof not available)"
-            
             error_msg = (
                 f"Failed to start Web UI on port {port}.\n"
                 f"Port is in use. To fix this:\n"
-                f"1. Check what's using the port: sudo lsof -i :{port} or sudo fuser {port}/tcp\n"
-                f"2. Kill the process: sudo kill -9 <PID> (replace <PID> with the process ID)\n"
-                f"Current port status:\n{port_info}"
+                f"1. Check what's using the port: sudo lsof -i :{port} or sudo fuser {port}/tcp (Linux/Mac)\n"
+                f"   On Windows: netstat -ano | findstr :{port}\n"
+                f"2. Kill the process: sudo kill -9 <PID> (Linux/Mac) or taskkill /PID <PID> /F (Windows)\n"
+                f"   Replace <PID> with the process ID from step 1"
             )
             raise Exception(error_msg)
         else:
