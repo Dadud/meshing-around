@@ -27,17 +27,79 @@
 
 ## Manual Install
 
+### Step 1: Pre-Flight Checks (Recommended)
+
+Before installing, run the pre-flight checks to ensure your system is ready:
+
+```sh
+python3 script/check_requirements.py
+```
+
+This will verify:
+- Python version (3.8+)
+- Required tools (pip, git)
+- Disk space
+- Write permissions
+- Network connectivity
+- Serial port access
+
+### Step 2: Install Dependencies
+
 Install all required dependencies using pip:
 
 ```sh
 pip install -r requirements.txt
 ```
 
-Copy the configuration template and edit as needed:
+Or if using a virtual environment (recommended):
+
+```sh
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Step 3: Configure the Bot
+
+**Option A - Interactive Configuration Wizard (Recommended):**
+
+```sh
+python3 script/config_wizard.py
+```
+
+The wizard will:
+- Detect available serial ports
+- Guide you through interface setup (Serial/TCP/BLE)
+- **Auto-detect Docker environment and suggest meshtasticd connection** ← NEW
+- **Test TCP connection to meshtasticd** ← NEW
+- Auto-detect your location
+- Configure Web UI and MCP Server
+- **Set up auto-start on boot (Linux/systemd)** ← NEW
+- Save configuration to `config.ini`
+
+**Note for Docker users**: The wizard automatically detects Docker environments and defaults to `meshtasticd:4403` for TCP connections. Make sure both containers are on the same Docker network.
+
+**Option B - Manual Configuration:**
 
 ```sh
 cp config.template config.ini
+nano config.ini  # Edit with your settings
 ```
+
+### Step 4: Verify Installation
+
+After installation, verify everything is set up correctly:
+
+```sh
+python3 script/verify_install.py
+```
+
+This checks:
+- Configuration file validity
+- All dependencies installed
+- Required directories exist
+- Main files present
+- Modules can be imported
 
 ---
 
