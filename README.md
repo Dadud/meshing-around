@@ -31,19 +31,37 @@ A comprehensive, feature-rich Python bot framework designed to enhance your [Mes
    cd meshing-around
    ```
 
-2. **Run automated installer:**
+2. **Run pre-flight checks (recommended):**
+   ```sh
+   python3 script/check_requirements.py
+   ```
+
+3. **Run automated installer:**
    ```sh
    bash install.sh
    ```
    See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 
-3. **Configure the bot:**
+4. **Configure the bot:**
+   
+   **Option A - Interactive wizard (recommended):**
+   ```sh
+   python3 script/config_wizard.py
+   ```
+   The wizard will guide you through configuration and can set up auto-start on boot (Linux).
+   
+   **Option B - Manual configuration:**
    ```sh
    cp config.template config.ini
    nano config.ini  # Edit with your settings
    ```
 
-4. **Start the bot:**
+5. **Verify installation:**
+   ```sh
+   python3 script/verify_install.py
+   ```
+
+6. **Start the bot:**
    ```sh
    python3 mesh_bot.py
    # Or if using systemd service:
